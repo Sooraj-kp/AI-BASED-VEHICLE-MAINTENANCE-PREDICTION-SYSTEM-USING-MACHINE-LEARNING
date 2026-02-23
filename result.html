@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Vehicle Maintenance - Analysis Result</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+
+    <div class="app-layout">
+        <!-- Sidebar -->
+        <aside class="sidebar glass-panel">
+            <div class="logo">
+                <div class="logo-icon-wrapper">
+                    <span class="logo-icon">⚡</span>
+                </div>
+                <h2 style="font-size: 1.25rem;">AI Vehicle Maintenance</h2>
+            </div>
+
+            <nav class="nav-menu">
+                <a href="/" class="nav-link active">
+                    <span class="icon">🚀</span>
+                    <span class="link-text">Prediction Hub</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-info glass-panel-inner">
+                <p>Advanced machine learning diagnostics for next-generation vehicle maintenance.</p>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="page-header">
+                <div class="header-text">
+                    <h1>Analysis Complete</h1>
+                    <p class="subtitle">Diagnostic results based on the provided engine telemetry.</p>
+                </div>
+            </header>
+
+            <section class="results-section" id="results-container">
+                <div class="results-grid single-col">
+                    {% if error %}
+                    <div class="result-card danger glass-panel">
+                        <div class="card-header">
+                            <div class="icon-container">❌</div>
+                            <h3>Error during Analysis</h3>
+                        </div>
+                        <div class="card-body">
+                            <p class="desc">{{ error }}</p>
+                            <a href="/" class="btn-primary"
+                                style="text-decoration: none; text-align: center; margin-top: 1rem;">Back to Telemetry
+                                Input</a>
+                        </div>
+                    </div>
+                    {% elif prediction == 1 %}
+                    <div class="result-card healthy glass-panel" id="condition-card" data-trigger-confetti="true">
+                        <div class="card-header">
+                            <div class="icon-container" id="condition-icon">✅</div>
+                            <h3 id="condition-title">Engine is Healthy</h3>
+                        </div>
+                        <div class="card-body">
+                            <p id="condition-desc" class="desc">Your engine is currently in good condition based on
+                                these readings. <b>No maintenance is required at this time.</b> You can safely continue
+                                operating the vehicle.</p>
+
+                            <div class="confidence-meter">
+                                <div class="meter-label">
+                                    <span>AI Confidence Level</span>
+                                    <span id="condition-confidence">{{ "%.1f"|format(confidence[1]*100) }}%</span>
+                                </div>
+                                <div class="meter-bar-bg">
+                                    <div class="meter-bar-fill" id="confidence-fill"
+                                        data-width="{{ confidence[1]*100 }}%"></div>
+                                </div>
+                            </div>
+                            <a href="/" class="btn-primary"
+                                style="text-decoration: none; text-align: center; margin-top: 2rem;">Analyze New
+                                Telemetry</a>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="result-card danger glass-panel" id="condition-card" data-trigger-confetti="false">
+                        <div class="card-header">
+                            <div class="icon-container" id="condition-icon">⚠️</div>
+                            <h3 id="condition-title">Engine Maintenance Required</h3>
+                        </div>
+                        <div class="card-body">
+                            <p id="condition-desc" class="desc">Our system has detected potential issues with your
+                                engine based on the current readings.<br><br><b>Action Needed:</b> Please schedule a
+                                diagnostic inspection with a mechanic immediately to prevent a breakdown.</p>
+
+                            <div class="confidence-meter">
+                                <div class="meter-label">
+                                    <span>AI Confidence Level</span>
+                                    <span id="condition-confidence">{{ "%.1f"|format(confidence[0]*100) }}%</span>
+                                </div>
+                                <div class="meter-bar-bg">
+                                    <div class="meter-bar-fill" id="confidence-fill"
+                                        data-width="{{ confidence[0]*100 }}%"></div>
+                                </div>
+                            </div>
+                            <a href="/" class="btn-primary"
+                                style="text-decoration: none; text-align: center; margin-top: 2rem;">Back to Telemetry
+                                Input</a>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Celebration library -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Apply widths from dataset to avoid IDE CSS lint errors
+            document.querySelectorAll('.meter-bar-fill').forEach(el => {
+                if (el.dataset.width) {
+                    setTimeout(() => {
+                        el.style.width = el.dataset.width;
+                    }, 100);
+                }
+            });
+
+            // Trigger confetti if indicated by the DOM to avoid IDE JS lint errors
+            const conditionCard = document.getElementById('condition-card');
+            if (conditionCard && conditionCard.dataset.triggerConfetti === "true") {
+                if (typeof confetti === 'function') {
+                    confetti({
+                        particleCount: 150,
+                        spread: 80,
+                        origin: { y: 0.6 },
+                        colors: ['#10b981', '#34d399', '#ffffff']
+                    });
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>

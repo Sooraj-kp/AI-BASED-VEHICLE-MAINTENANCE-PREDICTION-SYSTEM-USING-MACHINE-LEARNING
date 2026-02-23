@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Vehicle Maintenance - Engine Diagnostics</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+
+    <div class="app-layout">
+        <!-- Sidebar -->
+        <aside class="sidebar glass-panel">
+            <div class="logo">
+                <div class="logo-icon-wrapper">
+                    <span class="logo-icon">⚡</span>
+                </div>
+                <h2 style="font-size: 1.25rem;">AI Vehicle Maintenance</h2>
+            </div>
+
+            <nav class="nav-menu">
+                <a href="/" class="nav-link active">
+                    <span class="icon">🚀</span>
+                    <span class="link-text">Prediction Hub</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-info glass-panel-inner">
+                <p>Advanced machine learning diagnostics for next-generation vehicle maintenance.</p>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="page-header">
+                <div class="header-text">
+                    <h1>Real-Time Diagnostics</h1>
+                    <p class="subtitle">Enter current engine telemetry below. Our proprietary model analyzes over 19,000
+                        data points to predict component failure before it happens.</p>
+                </div>
+            </header>
+
+            <section class="metrics-input glass-panel">
+                <div class="section-header">
+                    <h2>⚙️ Live Telemetry Input</h2>
+                    <div class="live-indicator">
+                        <span class="dot"></span> System Ready
+                    </div>
+                </div>
+
+                <form id="prediction-form" class="form-grid" action="/result" method="POST">
+                    <div class="input-group">
+                        <label for="rpm">Engine RPM</label>
+                        <input type="number" id="rpm" name="rpm" value="750" step="10" min="0" max="4000" required>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="coolant_pressure">Coolant Pressure <span class="unit">(psi)</span></label>
+                        <input type="number" id="coolant_pressure" name="coolant_pressure" value="2.5" step="0.1"
+                            min="0" max="15" required>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="lub_oil_pressure">Lubricating Oil Pressure <span class="unit">(psi)</span></label>
+                        <input type="number" id="lub_oil_pressure" name="lub_oil_pressure" value="3.5" step="0.1"
+                            min="0" max="20" required>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="lub_oil_temp">Lubricating Oil Temp <span class="unit">(°C)</span></label>
+                        <input type="number" id="lub_oil_temp" name="lub_oil_temp" value="78.0" step="0.5" min="0"
+                            max="180" required>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="fuel_pressure">Fuel Pressure <span class="unit">(psi)</span></label>
+                        <input type="number" id="fuel_pressure" name="fuel_pressure" value="6.5" step="0.1" min="0"
+                            max="30" required>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="coolant_temp">Coolant Temp <span class="unit">(°C)</span></label>
+                        <input type="number" id="coolant_temp" name="coolant_temp" value="80.0" step="0.5" min="0"
+                            max="150" required>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn-primary" id="analyze-btn">
+                            <span id="btn-text">Initialize AI Analysis </span>
+                            <div class="spinner hidden" id="spinner"></div>
+                        </button>
+                    </div>
+                </form>
+            </section>
+
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+
+</html>
