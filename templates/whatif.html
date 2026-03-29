@@ -1,0 +1,395 @@
+{% extends "base.html" %}
+{% block title %}What-If Simulator — VehicleAI{% endblock %}
+{% block content %}
+
+<div class="page-hero">
+  <div class="overline">Module 05 — What-If Simulation</div>
+  <h1>What-If <span>Simulator</span></h1>
+  <p>Move any slider and instantly see how fault probability, risk score, anomaly likelihood and remaining life respond — in real time. Pinpoint the exact tipping points for each parameter.</p>
+  <div class="hero-badges">
+    <span class="badge badge-accent">Live Inference · All 5 Models</span>
+    <span class="badge badge-success">Real-Time Response</span>
+    <span class="badge badge-warning">Tipping Point Explorer</span>
+  </div>
+</div>
+
+<div class="section">
+  <div class="two-col-grid" style="display:grid; grid-template-columns:1.1fr 1fr; gap:24px; align-items:start;">
+
+    <!-- LEFT: SLIDERS -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+        <div class="card-head" style="margin-bottom:0;">Parameter Sliders</div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-ghost" style="padding:5px 10px;font-size:10px;color:var(--success);border-color:rgba(63,185,80,.4);" onclick="loadWISample('normal')">✓ Normal</button>
+          <button class="btn btn-ghost" style="padding:5px 10px;font-size:10px;color:var(--danger);border-color:rgba(248,81,73,.4);" onclick="loadWISample('fault')">✕ Fault</button>
+          <button class="btn btn-ghost" style="padding:5px 10px;font-size:10px;" onclick="resetSliders()">↺ Reset</button>
+        </div>
+      </div>
+
+      {% set params = [
+        ('Engine rpm',       'Engine RPM',       300,  5000, 1500, 'RPM', 1),
+        ('Lub oil pressure', 'Lub Oil Pressure', 0.1,  8.0,  3.5,  'bar', 0.01),
+        ('Fuel pressure',    'Fuel Pressure',    2.0,  30.0, 14.5, 'bar', 0.1),
+        ('Coolant pressure', 'Coolant Pressure', 0.3,  6.0,  2.5,  'bar', 0.01),
+        ('lub oil temp',     'Lub Oil Temp',     40,   150,  80,   '°C',  0.1),
+        ('Coolant temp',     'Coolant Temp',     50,   140,  82,   '°C',  0.1),
+      ] %}
+      <div style="display:flex;flex-direction:column;gap:20px;">
+        {% for key, label, mn, mx, default, unit, step in params %}
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <label style="font-size:11px;color:var(--text2);font-family:'Rajdhani',sans-serif;font-weight:600;text-transform:uppercase;letter-spacing:1px;">{{ label }}</label>
+            <span class="mono" style="font-size:12px;color:var(--accent);min-width:80px;text-align:right;" id="wi-val-{{ loop.index }}">{{ default }} {{ unit }}</span>
+          </div>
+          <!-- Slider with colour track fill via CSS -->
+          <div style="position:relative;">
+            <input type="range" class="wi-slider w-full"
+                   id="wi-{{ loop.index }}"
+                   data-key="{{ key }}" data-unit="{{ unit }}"
+                   data-val-id="wi-val-{{ loop.index }}"
+                   data-min="{{ mn }}" data-max="{{ mx }}"
+                   min="{{ mn }}" max="{{ mx }}" step="{{ step }}" value="{{ default }}"
+                   style="accent-color:var(--accent);cursor:pointer;height:6px;display:block;width:100%;">
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3);margin-top:3px;font-family:'Space Mono',monospace;">
+            <span>{{ mn }}</span>
+            <span style="color:var(--success);">healthy zone</span>
+            <span>{{ mx }}</span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- Currently changed param highlight -->
+      <div id="wi-changed-param" style="margin-top:18px;padding:10px 12px;background:var(--bg3);border-radius:6px;font-size:11px;color:var(--text3);border:1px solid var(--border);min-height:36px;">
+        Move a slider to explore tipping points…
+      </div>
+    </div>
+
+    <!-- RIGHT: LIVE RESULTS -->
+    <div>
+
+      <!-- Alert banner -->
+      <div id="wi-banner" style="background:rgba(88,166,255,.1);border:1px solid rgba(88,166,255,.3);border-radius:8px;padding:12px 18px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;transition:background .3s,border-color .3s;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="pulse pulse-anim" id="wi-pulse" style="background:var(--accent);"></span>
+          <span class="font-display fw-700" style="font-size:15px;letter-spacing:1.5px;" id="wi-alert-txt">LOADING…</span>
+        </div>
+        <span class="badge badge-accent" id="wi-alert-badge">LIVE</span>
+      </div>
+
+      <!-- Alert level pills — same pattern as engine page -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:14px;">
+        {% for lvl in ['NORMAL','CAUTION','WARNING','CRITICAL'] %}
+        <div id="wi-pill-{{ lvl }}" class="alert-pill">{{ lvl }}</div>
+        {% endfor %}
+      </div>
+
+      <!-- FAULT PROBABILITY METER -->
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-head">Fault Probability Meter</div>
+        <div class="confidence-meter-wrap" style="margin-top:0;">
+
+          <div class="conf-meter-top">
+            <span class="text-xs" style="letter-spacing:1.5px;font-family:'Rajdhani',sans-serif;font-weight:700;color:var(--text2);">LIVE FAULT PROBABILITY</span>
+            <span class="conf-pct-label" id="wi-conf-pct-label">—</span>
+          </div>
+
+          <div class="conf-track-outer">
+            <div class="conf-track">
+              <!-- Gradient layer — always full width, revealed by mask -->
+              <div class="conf-gradient"></div>
+              <!-- Mask — dark overlay shrinks from right to reveal fp% of gradient -->
+              <div class="conf-mask" id="wi-conf-mask"></div>
+              <div class="conf-zones">
+                <div class="conf-zone zone-ok">HEALTHY</div>
+                <div class="conf-zone zone-caution">CAUTION</div>
+                <div class="conf-zone zone-warn">WARN</div>
+                <div class="conf-zone zone-crit">CRITICAL</div>
+              </div>
+            </div>
+            <div class="conf-needle" id="wi-conf-needle"></div>
+          </div>
+
+          <div class="conf-scale">
+            <div class="conf-tick" style="left:40%"></div>
+            <div class="conf-tick" style="left:60%"></div>
+            <div class="conf-tick" style="left:75%"></div>
+            <span class="conf-scale-lbl first" style="left:0%">0%</span>
+            <span class="conf-scale-lbl" style="left:40%">40%</span>
+            <span class="conf-scale-lbl" style="left:60%">60%</span>
+            <span class="conf-scale-lbl" style="left:75%">75%</span>
+            <span class="conf-scale-lbl last"  style="left:100%">100%</span>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- 4 metric cards — colour-coded bars (bug fix) -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+
+        <div class="card" style="padding:14px;text-align:center;">
+          <div class="text-xs text-muted" style="letter-spacing:1px;margin-bottom:5px;">FAULT PROB</div>
+          <div class="font-display fw-700" style="font-size:28px;" id="wi-fault-pct">—</div>
+          <div style="background:var(--bg3);border-radius:100px;height:5px;margin-top:7px;overflow:hidden;">
+            <!-- FIX: colour set dynamically in JS -->
+            <div id="wi-fault-bar" style="height:100%;width:0%;border-radius:100px;transition:width .35s,background .35s;"></div>
+          </div>
+        </div>
+
+        <div class="card" style="padding:14px;text-align:center;">
+          <div class="text-xs text-muted" style="letter-spacing:1px;margin-bottom:5px;">RISK SCORE</div>
+          <div class="font-display fw-700" style="font-size:28px;" id="wi-risk">—</div>
+          <div style="background:var(--bg3);border-radius:100px;height:5px;margin-top:7px;overflow:hidden;">
+            <!-- FIX: colour set dynamically -->
+            <div id="wi-risk-bar" style="height:100%;width:0%;border-radius:100px;transition:width .35s,background .35s;"></div>
+          </div>
+        </div>
+
+        <div class="card" style="padding:14px;text-align:center;">
+          <div class="text-xs text-muted" style="letter-spacing:1px;margin-bottom:5px;">ANOMALY RISK</div>
+          <div class="font-display fw-700" style="font-size:28px;" id="wi-anom">—</div>
+          <div style="background:var(--bg3);border-radius:100px;height:5px;margin-top:7px;overflow:hidden;">
+            <!-- FIX: colour set dynamically -->
+            <div id="wi-anom-bar" style="height:100%;width:0%;border-radius:100px;transition:width .35s,background .35s;"></div>
+          </div>
+        </div>
+
+        <div class="card" style="padding:14px;text-align:center;">
+          <div class="text-xs text-muted" style="letter-spacing:1px;margin-bottom:5px;">LIFE REMAINING</div>
+          <div class="font-display fw-700" style="font-size:22px;color:var(--accent);" id="wi-rul">—</div>
+          <!-- FIX: use rul_days from API, not manual calculation -->
+          <div class="text-xs text-muted" style="margin-top:7px;" id="wi-rul-days">—</div>
+        </div>
+      </div>
+
+      <!-- Health score gauge -->
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-head">Health Score</div>
+        <div style="display:flex;align-items:center;gap:16px;">
+          <svg width="110" height="62" viewBox="0 0 140 80" style="flex-shrink:0;">
+            <path d="M15 70 A55 55 0 0 1 125 70" fill="none" stroke="var(--border)" stroke-width="10" stroke-linecap="round"/>
+            <path id="wi-gauge-arc" d="M15 70 A55 55 0 0 1 125 70" fill="none" stroke="#3fb950" stroke-width="10"
+                  stroke-linecap="round" stroke-dasharray="0 172"
+                  style="transition:stroke-dasharray .4s cubic-bezier(.4,0,.2,1),stroke .3s;"/>
+            <text x="70" y="64" text-anchor="middle" fill="#e6edf3" font-family="Rajdhani" font-size="18" font-weight="700" id="wi-gauge-txt">—</text>
+            <text x="70" y="76" text-anchor="middle" fill="#6e7681" font-family="Inter" font-size="7">HEALTH</text>
+          </svg>
+          <div style="flex:1;">
+            <p class="text-sm text-muted" id="wi-health-desc">Move sliders to see live health prediction.</p>
+            <div style="margin-top:8px;font-size:10px;color:var(--text3);">
+              Updated: <span id="wi-timestamp" class="mono text-accent">—</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sensitivity insight -->
+      <div class="card">
+        <div class="card-head">Sensitivity Insight</div>
+        <div id="wi-impact" style="font-size:12px;color:var(--text2);line-height:1.7;min-height:48px;">
+          Adjust sliders to discover which parameter has the greatest influence on engine health.
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;">
+          <a href="/shap" class="btn btn-ghost" style="font-size:11px;padding:7px 14px;border-color:rgba(88,166,255,.3);flex:1;">🔍 Deep Explain with SHAP →</a>
+          <a href="/engine" class="btn btn-ghost" style="font-size:11px;padding:7px 14px;flex:1;">⚡ Full Engine Scan →</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Constants ─────────────────────────────────────────────────────
+const WI_DEFAULTS={
+  'Engine rpm':1500,'Lub oil pressure':3.5,'Fuel pressure':14.5,
+  'Coolant pressure':2.5,'lub oil temp':80,'Coolant temp':82
+};
+const WI_SAMPLES={
+  normal:{'Engine rpm':1500,'Lub oil pressure':3.5,'Fuel pressure':14.5,'Coolant pressure':2.5,'lub oil temp':80,'Coolant temp':82},
+  fault: {'Engine rpm':400, 'Lub oil pressure':1.2,'Fuel pressure':5.5, 'Coolant pressure':0.6,'lub oil temp':128,'Coolant temp':110},
+};
+
+// Alert banner styles
+const ALERT_STYLES={
+  NORMAL:  {bg:'rgba(63,185,80,.08)',  border:'rgba(63,185,80,.3)',  color:'#3fb950', pulse:'#3fb950'},
+  CAUTION: {bg:'rgba(240,136,62,.08)', border:'rgba(240,136,62,.3)', color:'#f0883e', pulse:'#f0883e'},
+  WARNING: {bg:'rgba(210,153,34,.08)', border:'rgba(210,153,34,.3)', color:'#d29922', pulse:'#d29922'},
+  CRITICAL:{bg:'rgba(248,81,73,.08)',  border:'rgba(248,81,73,.3)',  color:'#f85149', pulse:'#f85149'},
+};
+
+// Pill active styles (same as engine page)
+const PILL_STYLES={
+  NORMAL:  {bg:'rgba(63,185,80,.2)',  border:'rgba(63,185,80,.7)',  color:'#3fb950',shadow:'rgba(63,185,80,.3)'},
+  CAUTION: {bg:'rgba(240,136,62,.2)', border:'rgba(240,136,62,.7)', color:'#f0883e',shadow:'rgba(240,136,62,.3)'},
+  WARNING: {bg:'rgba(210,153,34,.2)', border:'rgba(210,153,34,.7)', color:'#d29922',shadow:'rgba(210,153,34,.3)'},
+  CRITICAL:{bg:'rgba(248,81,73,.2)',  border:'rgba(248,81,73,.7)',  color:'#f85149',shadow:'rgba(248,81,73,.3)'},
+};
+
+// Colour helper for metric values
+function metricColor(v, hi=70, mid=40){ return v>hi?'var(--danger)':v>mid?'var(--warning)':'var(--success)'; }
+
+// ── Sliders ───────────────────────────────────────────────────────
+const sliders=document.querySelectorAll('.wi-slider');
+sliders.forEach(s=>{
+  const valEl=document.getElementById(s.dataset.valId);
+  s.addEventListener('input',()=>{
+    const v=parseFloat(s.value);
+    valEl.textContent=(parseFloat(s.step)<1?v.toFixed(parseFloat(s.step)<0.05?2:1):Math.round(v))+' '+s.dataset.unit;
+    scheduleUpdate(s.dataset.key);
+  });
+});
+
+function getVals(){
+  const v={};
+  sliders.forEach(s=>{ v[s.dataset.key]=parseFloat(s.value); });
+  return v;
+}
+function setVals(obj){
+  sliders.forEach(s=>{
+    const v=obj[s.dataset.key];
+    if(v!==undefined){
+      s.value=v;
+      const el=document.getElementById(s.dataset.valId);
+      el.textContent=(parseFloat(s.step)<1?parseFloat(v).toFixed(parseFloat(s.step)<0.05?2:1):Math.round(v))+' '+s.dataset.unit;
+    }
+  });
+}
+function loadWISample(t){ setVals(WI_SAMPLES[t]); scheduleUpdate(null); }
+function resetSliders()  { setVals(WI_DEFAULTS);  scheduleUpdate(null); }
+
+// ── Debounced update ──────────────────────────────────────────────
+let wiTimer=null, lastState=null, lastChangedKey=null;
+function scheduleUpdate(key){
+  lastChangedKey=key;
+  if(wiTimer) clearTimeout(wiTimer);
+  wiTimer=setTimeout(runWI, 180);
+}
+
+// ── Live update ───────────────────────────────────────────────────
+async function runWI(){
+  const vals=getVals();
+  try{
+    const res=await fetch('/api/whatif',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(vals)});
+    const d=await res.json();
+    if(!d.success) return;
+
+    const al=d.alert_level||'NORMAL';
+    const st=ALERT_STYLES[al]||ALERT_STYLES.NORMAL;
+    const ps=PILL_STYLES[al]||PILL_STYLES.NORMAL;
+    const fp=d.fault_prob;
+    const rs=d.risk_score;
+    const ar=Math.min(d.anomaly_risk,100);
+    const hs=d.health_score;
+
+    // ── Alert banner ─────────────────────────────────
+    const banner=document.getElementById('wi-banner');
+    banner.style.background  =st.bg;
+    banner.style.borderColor =st.border;
+    const alertTxt=document.getElementById('wi-alert-txt');
+    alertTxt.style.color=st.color; alertTxt.textContent=al;
+    document.getElementById('wi-pulse').style.background=st.pulse;
+    const bCls=al==='NORMAL'?'badge-success':al==='CRITICAL'?'badge-danger':'badge-warning';
+    const badge=document.getElementById('wi-alert-badge');
+    badge.className='badge '+bCls; badge.textContent=al;
+
+    // ── Alert pills ───────────────────────────────────
+    ['NORMAL','CAUTION','WARNING','CRITICAL'].forEach(lvl=>{
+      const el=document.getElementById('wi-pill-'+lvl);
+      const p=PILL_STYLES[lvl];
+      if(lvl===al){
+        el.style.cssText=`background:${p.bg};border-color:${p.border};color:${p.color};box-shadow:0 0 10px ${p.shadow};`;
+      } else {
+        el.style.cssText='';
+      }
+    });
+
+    // ── Confidence meter (fault probability) ─────────
+    const COLOR_MAP={NORMAL:'#3fb950',CAUTION:'#f0883e',WARNING:'#d29922',CRITICAL:'#f85149'};
+    const mCol=COLOR_MAP[al]||'#3fb950';
+    const confMask  =document.getElementById('wi-conf-mask');
+    const confNeedle=document.getElementById('wi-conf-needle');
+    const confLbl   =document.getElementById('wi-conf-pct-label');
+    confLbl.style.color=mCol;
+    confLbl.textContent=fp.toFixed(1)+'%';
+    // Mask shrinks from right: width=(100-fp)% reveals fp% of gradient from left.
+    // Width transition is rock-solid — no clip-path browser quirks.
+    confMask.style.transition = 'none';
+    void confMask.offsetWidth;
+    confMask.style.transition = 'width 1s cubic-bezier(.4,0,.2,1)';
+    confMask.style.width = (100 - fp).toFixed(2) + '%';
+    confNeedle.style.left            = Math.max(1, fp).toFixed(2) + '%';
+    confNeedle.style.backgroundColor = mCol;
+    confNeedle.style.color           = mCol;
+
+    // ── Fault probability metric card ─────────────────
+    const fpCol=metricColor(fp);
+    const fEl=document.getElementById('wi-fault-pct');
+    fEl.textContent=fp.toFixed(1)+'%'; fEl.style.color=fpCol;
+    // FIX: colour-coded bar
+    const fBar=document.getElementById('wi-fault-bar');
+    fBar.style.background=fpCol; fBar.style.width=Math.min(fp,100)+'%';
+
+    // ── Risk score card ───────────────────────────────
+    const rsCol=metricColor(rs);
+    const rEl=document.getElementById('wi-risk');
+    rEl.textContent=rs.toFixed(0)+'/100'; rEl.style.color=rsCol;
+    // FIX: colour-coded bar
+    const rBar=document.getElementById('wi-risk-bar');
+    rBar.style.background=rsCol; rBar.style.width=Math.min(rs,100)+'%';
+
+    // ── Anomaly risk card ─────────────────────────────
+    const arCol=metricColor(ar);
+    const aEl=document.getElementById('wi-anom');
+    aEl.textContent=ar.toFixed(0)+'%'; aEl.style.color=arCol;
+    // FIX: colour-coded bar
+    const aBar=document.getElementById('wi-anom-bar');
+    aBar.style.background=arCol; aBar.style.width=Math.min(ar,100)+'%';
+
+    // ── RUL ───────────────────────────────────────────
+    document.getElementById('wi-rul').textContent=(d.rul_km/1000).toFixed(1)+'k km';
+    // FIX: use rul_days from API (not manual d.rul_km/50)
+    const days=Math.round(d.rul_days||d.rul_km/50);
+    document.getElementById('wi-rul-days').textContent='≈ '+days.toLocaleString('en-IN')+' days';
+
+    // ── Health gauge ──────────────────────────────────
+    const full=172;
+    const gCol=COLOR_MAP[al]||'#3fb950';  // FIX: gauge arc matches alert level colour
+    const dash=(hs/100*full).toFixed(1);
+    document.getElementById('wi-gauge-arc').style.strokeDasharray=dash+' '+(full-dash);
+    document.getElementById('wi-gauge-arc').style.stroke=gCol;
+    document.getElementById('wi-gauge-txt').textContent=hs.toFixed(0)+'%';
+    document.getElementById('wi-health-desc').innerHTML=
+      `Health: <strong style="color:${gCol}">${hs.toFixed(1)}%</strong> &nbsp;·&nbsp; ` +
+      `Fault: <strong style="color:${mCol}">${fp.toFixed(1)}%</strong> &nbsp;·&nbsp; ` +
+      `Risk: <strong style="color:${rsCol}">${rs.toFixed(0)}/100</strong>`;
+    document.getElementById('wi-timestamp').textContent=new Date().toLocaleTimeString();
+
+    // ── Sensitivity insight ───────────────────────────
+    if(lastChangedKey && lastState){
+      const delta=(fp-lastState.fault);
+      const absDelta=Math.abs(delta).toFixed(1);
+      const sign=delta>=0?'+':'-';
+      const dc=delta>0?'var(--danger)':'var(--success)';
+      const arrow=delta>0?'↑':'↓';
+      document.getElementById('wi-changed-param').innerHTML=
+        `Changed: <strong style="color:var(--accent)">${lastChangedKey}</strong> &nbsp;&nbsp; ` +
+        `Fault: <strong style="color:${dc}">${sign}${absDelta}%</strong> &nbsp; ${arrow}`;
+      document.getElementById('wi-impact').innerHTML=
+        `Last adjustment: <strong style="color:var(--accent)">${lastChangedKey}</strong><br>` +
+        `Fault probability ${delta>=0?'increased':'decreased'} by <strong style="color:${dc}">${sign}${absDelta}%</strong><br>` +
+        `<span style="font-size:11px;color:var(--text3);">Continue moving sliders to find the exact tipping point for each parameter.</span>`;
+    }
+    lastState={vals:{...vals}, fault:fp};
+
+  }catch(e){ console.warn('What-If error:',e); }
+}
+
+// Initialise on page load
+scheduleUpdate(null);
+</script>
+{% endblock %}

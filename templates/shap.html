@@ -1,0 +1,364 @@
+{% extends "base.html" %}
+{% block title %}SHAP Explainability — VehicleAI{% endblock %}
+{% block content %}
+
+<div class="page-hero">
+  <div class="overline">Module 06 — SHAP Explainability</div>
+  <h1>SHAP <span>Explainability</span></h1>
+  <p>Understand exactly <em>why</em> the model made a specific prediction. Each sensor parameter receives a signed Shapley contribution — positive values push toward fault, negative values push toward healthy.</p>
+</div>
+
+<div class="section">
+  <div style="display:grid; grid-template-columns:1.1fr 1.6fr; gap:28px; align-items:start;">
+
+    <!-- LEFT: Form -->
+    <div>
+      <div class="card glass-card">
+        <div class="card-head-row">
+          <div class="card-head">Engine Parameters to Explain</div>
+          <div id="shap-profile-hint" style="font-size:11px;color:var(--success);display:none;">✓ From scan</div>
+        </div>
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+          <div class="field"><label>Engine RPM</label>
+            <input type="number" id="s-rpm" value="1500" step="1"><span class="hint">700–2,000 normal</span></div>
+          <div class="field"><label>Lub Oil Pressure <span class="unit-badge">bar</span></label>
+            <input type="number" id="s-oil-p" value="3.5" step="0.01"><span class="hint">2.0–6.0 normal</span></div>
+          <div class="field"><label>Fuel Pressure <span class="unit-badge">bar</span></label>
+            <input type="number" id="s-fuel-p" value="14.5" step="0.01"><span class="hint">8.0–22.0 normal</span></div>
+          <div class="field"><label>Coolant Pressure <span class="unit-badge">bar</span></label>
+            <input type="number" id="s-cool-p" value="2.5" step="0.01"><span class="hint">1.0–4.0 normal</span></div>
+          <div class="field"><label>Lub Oil Temp <span class="unit-badge">°C</span></label>
+            <input type="number" id="s-oil-t" value="80" step="0.1"><span class="hint">60–100 normal</span></div>
+          <div class="field"><label>Coolant Temp <span class="unit-badge">°C</span></label>
+            <input type="number" id="s-cool-t" value="82" step="0.1"><span class="hint">70–95 normal</span></div>
+        </div>
+        <div style="margin-top:18px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <button class="btn btn-primary btn-glow" id="explain-btn" onclick="runExplain()">🔍 Explain Prediction</button>
+          <button class="btn btn-ghost" onclick="clearExplain()">Clear</button>
+        </div>
+        <div style="margin-top:12px; padding:10px 12px; background:var(--bg3); border-radius:6px; font-size:11px; color:var(--text3); border:1px solid var(--border);">
+          💡 Tip: Run an <a href="/engine" style="color:var(--accent);">Engine Scan</a> first — values auto-populate here.
+        </div>
+      </div>
+
+      <!-- How SHAP works -->
+      <div class="card mt-16">
+        <div class="card-head">How SHAP Works</div>
+        <div class="flow-steps">
+          <div class="flow-step">
+            <div class="step-num">01</div>
+            <div class="step-body"><h4>Baseline Prediction</h4>
+              <p>Model is run on 150 background engine samples to establish the average expected fault probability.</p></div>
+          </div>
+          <div class="flow-step">
+            <div class="step-num">02</div>
+            <div class="step-body"><h4>Feature Contribution</h4>
+              <p>Each feature is replaced one at a time across all background samples. The average prediction shift measures that feature's Shapley value.</p></div>
+          </div>
+          <div class="flow-step">
+            <div class="step-num">03</div>
+            <div class="step-body"><h4>Signed Attribution</h4>
+              <p>SHAP values are rescaled so they sum exactly to (Prediction − Baseline). Red bars push toward fault; green bars push toward healthy.</p></div>
+          </div>
+        </div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:12px;">
+          <span class="badge badge-accent">Shapley Values</span>
+          <span class="badge badge-success">150 Background Samples</span>
+          <span class="badge badge-purple">Mathematically Exact</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Results -->
+    <div>
+      <div id="shap-waiting" class="state-box">
+        <div class="state-icon">🔍</div>
+        <div class="state-title">AWAITING EXPLANATION</div>
+        <div class="state-sub">Enter parameters and click "Explain Prediction" to see SHAP attribution</div>
+      </div>
+
+      <div id="shap-loading" style="display:none;" class="state-box">
+        <div class="spinner" style="width:40px;height:40px;margin:0 auto 16px;"></div>
+        <div class="state-title">COMPUTING SHAP VALUES…</div>
+        <div class="state-sub">Running 150 background sample interventions</div>
+      </div>
+
+      <div id="shap-results" style="display:none;" class="result-animate">
+
+        <!-- Summary strip -->
+        <div class="card" style="margin-bottom:14px;">
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            <div style="text-align:center; min-width:90px; padding:10px 14px; background:var(--bg3); border-radius:8px; border:1px solid var(--border);">
+              <div class="text-xs text-muted" style="letter-spacing:1px; margin-bottom:4px;">BASELINE</div>
+              <div class="font-display fw-700" style="font-size:24px; color:var(--text2);" id="shap-baseline">—</div>
+            </div>
+            <div style="flex:1; min-width:80px;">
+              <div style="font-size:9px; color:var(--text3); margin-bottom:5px; letter-spacing:1px; font-family:'Rajdhani',sans-serif;">ATTRIBUTION BREAKDOWN</div>
+              <div style="height:20px; display:flex; border-radius:4px; overflow:hidden; border:1px solid var(--border);" id="shap-mini-waterfall"></div>
+              <div style="font-size:9px; color:var(--text3); margin-top:4px;">
+                <span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;"><span style="width:8px;height:8px;background:rgba(248,81,73,.8);border-radius:2px;"></span>pushes fault</span>
+                <span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;background:rgba(63,185,80,.8);border-radius:2px;"></span>pushes healthy</span>
+              </div>
+            </div>
+            <div style="font-size:22px; color:var(--text3);">→</div>
+            <div style="text-align:center; min-width:90px; padding:10px 14px; border-radius:8px; border:1px solid var(--border);" id="shap-pred-box">
+              <div class="text-xs text-muted" style="letter-spacing:1px; margin-bottom:4px;">PREDICTION</div>
+              <div class="font-display fw-700" style="font-size:24px;" id="shap-pred">—</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Verdict card -->
+        <div id="shap-verdict-box" class="card" style="margin-bottom:14px; transition:border-color .4s;">
+          <div class="card-head">Prediction Explanation</div>
+          <p id="shap-summary-text" class="text-sm text-muted" style="margin-bottom:10px; line-height:1.75;"></p>
+          <p id="shap-verdict-text" style="font-size:13px; color:var(--text); line-height:1.6;"></p>
+        </div>
+
+        <!-- Waterfall chart -->
+        <div class="card" style="margin-bottom:14px;">
+          <div class="card-head">SHAP Waterfall Chart</div>
+          <div style="display:flex; gap:14px; margin-bottom:12px; font-size:10px; color:var(--text3);">
+            <span style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;background:rgba(248,81,73,.8);border-radius:2px;"></span>Pushes toward fault</span>
+            <span style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;background:rgba(63,185,80,.8);border-radius:2px;"></span>Pushes toward healthy</span>
+          </div>
+          <div id="waterfall-chart"></div>
+        </div>
+
+        <!-- Feature table -->
+        <div class="card">
+          <div class="card-head">Feature Attribution Breakdown</div>
+          <div id="shap-feature-table"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Global SHAP graphs -->
+  <div style="margin-top:48px; border-top:1px solid var(--border); padding-top:36px;">
+    <h2 class="section-title">Global SHAP Analysis</h2>
+    <p class="text-muted text-sm" style="margin-bottom:22px; max-width:700px;">
+      Computed across 300 training samples to reveal which features matter globally and how their values correlate with fault contributions.
+    </p>
+    <div class="graph-grid">
+      {% for file, title, desc in [
+        ('shap_global_importance.png', 'Global Feature Importance', 'Mean |SHAP| value per feature across 300 training samples — shows which parameters most consistently influence predictions.'),
+        ('shap_beeswarm.png',          'SHAP Beeswarm Plot',        '300 engines as dots — x-axis = SHAP contribution, colour = feature value. Red=high value, blue=low value.'),
+        ('shap_dependence.png',        'SHAP Dependence Plots',     'How each top feature\'s value maps to its SHAP contribution. Polynomial trend lines reveal tipping points.'),
+        ('shap_direction_heatmap.png', 'Direction Heatmap',         'Mean positive vs negative SHAP per feature — shows in which direction each parameter typically drives predictions.'),
+      ] %}
+      <div class="graph-card" onclick="openModal('{{ url_for('static', filename='images/graphs/' ~ file) }}', '{{ title }}', '{{ desc }}')">
+        <img src="{{ url_for('static', filename='images/graphs/' ~ file) }}" alt="{{ title }}" class="graph-img" loading="lazy">
+        <div class="graph-info">
+          <div class="graph-title">{{ title }}</div>
+          <div class="graph-desc">{{ desc }}</div>
+          <div style="margin-top:8px;"><span class="badge badge-purple" style="font-size:9px;">Click to expand</span></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div id="graph-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,.88); backdrop-filter:blur(6px); padding:80px 20px 40px; overflow-y:auto; align-items:flex-start; justify-content:center;" onclick="if(event.target===this)closeModal()">
+  <div style="max-width:1000px; width:100%; background:var(--bg2); border:1px solid var(--border2); border-radius:12px; overflow:hidden; margin:auto;">
+    <div style="padding:14px 18px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border);">
+      <div>
+        <div class="font-display fw-700" style="font-size:15px; letter-spacing:1px;" id="modal-title">—</div>
+        <div class="text-sm text-muted" id="modal-desc">—</div>
+      </div>
+      <button onclick="closeModal()" style="background:none; border:1px solid var(--border2); color:var(--text2); padding:5px 12px; border-radius:4px; cursor:pointer; font-size:16px;">✕</button>
+    </div>
+    <img id="modal-img" src="" alt="" style="width:100%; display:block;">
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Auto-populate from engine scan if values stored
+(function autoPopulate(){
+  const e = window._lastEngine || JSON.parse(sessionStorage.getItem('lastEngineParams') || 'null');
+  if (!e || !e.parameters) return;
+  const p = e.parameters;
+  const map = {
+    's-rpm':    p['Engine rpm'],
+    's-oil-p':  p['Lub oil pressure'],
+    's-fuel-p': p['Fuel pressure'],
+    's-cool-p': p['Coolant pressure'],
+    's-oil-t':  p['lub oil temp'],
+    's-cool-t': p['Coolant temp'],
+  };
+  Object.entries(map).forEach(([id, v]) => { if (v != null) document.getElementById(id).value = v; });
+  document.getElementById('shap-profile-hint').style.display = 'block';
+})();
+
+function clearExplain(){
+  document.getElementById('shap-waiting').style.display  = 'block';
+  document.getElementById('shap-results').style.display  = 'none';
+  ['s-rpm','s-oil-p','s-fuel-p','s-cool-p','s-oil-t','s-cool-t'].forEach(id => document.getElementById(id).value = '');
+}
+
+async function runExplain(){
+  const vals = {
+    'Engine rpm':       parseFloat(document.getElementById('s-rpm').value),
+    'Lub oil pressure': parseFloat(document.getElementById('s-oil-p').value),
+    'Fuel pressure':    parseFloat(document.getElementById('s-fuel-p').value),
+    'Coolant pressure': parseFloat(document.getElementById('s-cool-p').value),
+    'lub oil temp':     parseFloat(document.getElementById('s-oil-t').value),
+    'Coolant temp':     parseFloat(document.getElementById('s-cool-t').value),
+  };
+  if (Object.values(vals).some(v => isNaN(v))){ showToast('Please fill all fields', 'error'); return; }
+  const btn = document.getElementById('explain-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Computing…';
+  document.getElementById('shap-waiting').style.display  = 'none';
+  document.getElementById('shap-results').style.display  = 'none';
+  document.getElementById('shap-loading').style.display  = 'block';
+  try {
+    const res = await fetch('/api/explain', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(vals) });
+    const d   = await res.json();
+    document.getElementById('shap-loading').style.display = 'none';
+    if (!d.success){ showToast('Error: ' + d.error, 'error'); return; }
+    renderSHAP(d);
+    showToast('SHAP computation complete', 'success');
+  } catch(e){
+    document.getElementById('shap-loading').style.display  = 'none';
+    document.getElementById('shap-waiting').style.display  = 'block';
+    showToast('Network error: ' + e.message, 'error');
+  }
+  btn.disabled = false; btn.innerHTML = '🔍 Explain Prediction';
+}
+
+function renderSHAP(d){
+  const predPct   = d.prediction;
+  const basePct   = d.baseline;
+  const isHigh    = predPct > 60;
+  const isMed     = predPct > 40;
+  const predColor = isHigh ? 'var(--danger)' : isMed ? 'var(--warning)' : 'var(--success)';
+
+  // Summary strip
+  document.getElementById('shap-baseline').textContent = basePct.toFixed(1) + '%';
+  const predEl = document.getElementById('shap-pred');
+  predEl.textContent = predPct.toFixed(1) + '%';
+  predEl.style.color = predColor;
+  document.getElementById('shap-pred-box').style.background = isHigh ? 'rgba(248,81,73,.06)' : isMed ? 'rgba(210,153,34,.06)' : 'rgba(63,185,80,.06)';
+  document.getElementById('shap-pred-box').style.borderColor = predColor;
+
+  // Mini waterfall
+  const mw  = document.getElementById('shap-mini-waterfall');
+  mw.innerHTML = '';
+  const tot = d.features.reduce((s,f) => s + Math.abs(f.shap_pct), 0) || 1;
+  d.features.forEach(f => {
+    const w   = Math.abs(f.shap_pct) / tot * 100;
+    const col = f.direction === 'increase' ? 'rgba(248,81,73,.8)' : 'rgba(63,185,80,.8)';
+    const seg = document.createElement('div');
+    seg.style.cssText = `flex:0 0 ${w}%;background:${col};`;
+    mw.appendChild(seg);
+  });
+
+  // Verdict
+  const vbox = document.getElementById('shap-verdict-box');
+  vbox.style.borderColor = predColor;
+  vbox.style.background  = isHigh ? 'rgba(248,81,73,.04)' : isMed ? 'rgba(210,153,34,.04)' : 'rgba(63,185,80,.04)';
+  document.getElementById('shap-summary-text').textContent = d.summary;
+  document.getElementById('shap-verdict-text').textContent = d.verdict;
+
+  // Waterfall chart
+  const wf     = document.getElementById('waterfall-chart');
+  wf.innerHTML = '';
+  const maxPct = Math.max(...d.features.map(f => Math.abs(f.shap_pct)));
+
+  [{label:'BASELINE', value:basePct, isBase:true},
+   ...d.features,
+   {label:'PREDICTION', value:predPct, isPred:true}].forEach((row, idx) => {
+    const isBase = row.isBase, isPred = row.isPred, isFeat = !isBase && !isPred;
+    const rowEl = document.createElement('div');
+    rowEl.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:9px;';
+
+    const lEl = document.createElement('div');
+    lEl.style.cssText = `min-width:152px;font-size:12px;text-align:right;padding-right:4px;
+      color:${isBase?'var(--text3)':isPred?predColor:row.direction==='increase'?'var(--danger)':'var(--success)'};
+      font-family:${isBase||isPred?'Rajdhani':'Inter'};font-weight:${isBase||isPred?700:400};
+      letter-spacing:${isBase||isPred?'0.5px':'0'};`;
+    lEl.textContent = isBase ? 'BASELINE' : isPred ? 'PREDICTION' : row.label;
+
+    const track = document.createElement('div');
+    track.style.cssText = 'flex:1;position:relative;height:26px;display:flex;align-items:center;';
+
+    if (isBase || isPred){
+      const pct  = isBase ? basePct : predPct;
+      const line = document.createElement('div');
+      line.style.cssText = 'position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:1px;background:var(--border);';
+      const dot  = document.createElement('div');
+      dot.style.cssText = `position:absolute;left:${pct}%;top:50%;transform:translate(-50%,-50%);width:12px;height:12px;border-radius:50%;background:${isBase?'var(--text3)':predColor};border:2px solid var(--bg2);`;
+      track.appendChild(line); track.appendChild(dot);
+    } else {
+      const barPct = Math.abs(row.shap_pct) / maxPct * 46;
+      const isPos  = row.direction === 'increase';
+      const barCol = isPos ? 'rgba(248,81,73,.85)' : 'rgba(63,185,80,.85)';
+      const spine  = document.createElement('div');
+      spine.style.cssText = 'position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:1px;background:var(--border);opacity:.3;';
+      track.appendChild(spine);
+      const bar = document.createElement('div');
+      bar.style.cssText = `position:absolute;${isPos?'left:50%':'right:50%'};top:3px;height:20px;width:0%;background:${barCol};border-radius:${isPos?'0 3px 3px 0':'3px 0 0 3px'};transition:width .8s cubic-bezier(.4,0,.2,1);`;
+      track.appendChild(bar);
+      setTimeout(() => { bar.style.width = barPct + '%'; }, 50 + idx * 60);
+      const conn = document.createElement('div');
+      conn.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:6px;height:6px;border-radius:50%;background:var(--border2);';
+      track.appendChild(conn);
+    }
+
+    const vEl = document.createElement('div');
+    vEl.style.cssText = `min-width:64px;font-size:12px;font-family:'Rajdhani',sans-serif;font-weight:700;
+      color:${isBase?'var(--text3)':isPred?predColor:row.direction==='increase'?'var(--danger)':'var(--success)'};`;
+    vEl.textContent = isBase ? basePct.toFixed(1)+'%' : isPred ? predPct.toFixed(1)+'%'
+                      : (row.direction==='increase'?'+':'') + row.shap_pct.toFixed(1) + '%';
+
+    rowEl.appendChild(lEl); rowEl.appendChild(track); rowEl.appendChild(vEl);
+    wf.appendChild(rowEl);
+    if (isBase){ const sep=document.createElement('div'); sep.style.cssText='border-top:1px dashed var(--border);margin:5px 0;'; wf.appendChild(sep); }
+  });
+
+  // Feature attribution table
+  document.getElementById('shap-feature-table').innerHTML = d.features.map((f, i) => {
+    const col   = f.direction === 'increase' ? 'var(--danger)' : 'var(--success)';
+    const sign  = f.direction === 'increase' ? '+' : '';
+    const badge = f.in_range
+      ? `<span class="badge badge-success" style="font-size:9px;">In Range</span>`
+      : `<span class="badge badge-danger"  style="font-size:9px;">Out of Range</span>`;
+    return `<div style="display:grid;grid-template-columns:20px 1fr 90px 72px 68px;gap:8px;align-items:center;padding:11px 6px;border-bottom:1px solid var(--border);${i===0?'background:rgba(88,166,255,.04);border-radius:6px 6px 0 0;':''}">
+      <div style="font-size:10px;color:var(--text3);font-family:'Rajdhani',sans-serif;font-weight:700;">#${i+1}</div>
+      <div>
+        <div style="font-size:13px;color:var(--text);font-weight:500;">${f.label}</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:2px;">
+          <span class="mono" style="color:var(--accent);">${f.value} ${f.unit}</span>
+          &nbsp;·&nbsp; normal: ${f.healthy_lo}–${f.healthy_hi} ${f.unit}
+        </div>
+        <div style="margin-top:5px;height:4px;background:var(--bg3);border-radius:100px;overflow:hidden;max-width:160px;">
+          <div style="height:100%;width:${f.bar_pct}%;background:${col};border-radius:100px;transition:width .8s;"></div>
+        </div>
+      </div>
+      <div style="text-align:center;">${badge}</div>
+      <div style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:20px;color:${col};text-align:center;">${sign}${f.shap_pct.toFixed(1)}%</div>
+      <div style="font-size:10px;color:var(--text3);text-align:center;font-family:'Space Mono',monospace;">${sign}${(f.shap*100).toFixed(2)}pp</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('shap-results').style.display = 'block';
+}
+
+function openModal(src, title, desc){
+  document.getElementById('modal-img').src = src;
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-desc').textContent  = desc;
+  document.getElementById('graph-modal').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+function closeModal(){
+  document.getElementById('graph-modal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+</script>
+{% endblock %}

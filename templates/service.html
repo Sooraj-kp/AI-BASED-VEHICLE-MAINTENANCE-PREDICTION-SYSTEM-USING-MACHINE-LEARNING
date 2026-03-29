@@ -1,0 +1,382 @@
+{% extends "base.html" %}
+{% block title %}Service Cost Predictor — VehicleAI{% endblock %}
+{% block content %}
+
+<div class="page-hero">
+  <div class="overline">Module 02 — Service Intelligence</div>
+  <h1>Service Cost <span>Predictor</span></h1>
+  <p>Predict total service cost and identify which of 14 maintenance items need attention — with 90% confidence intervals from 200 Random Forest trees trained on 1,139 real Indian vehicle service records.</p>
+  <div class="hero-badges">
+    <span class="badge badge-success">Random Forest · 200 Trees</span>
+    <span class="badge badge-accent">90% Confidence Intervals</span>
+    <span class="badge badge-purple">14 Maintenance Items</span>
+    <span class="badge badge-warning">1,139 Service Records</span>
+  </div>
+</div>
+
+<div class="section">
+  <div class="two-col-grid" style="display:grid;grid-template-columns:1fr 1.35fr;gap:28px;align-items:start;">
+
+    <!-- ── FORM ── -->
+    <div>
+      <!-- Profile banner -->
+      <div id="profile-banner" class="profile-banner" style="display:none;">
+        <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+          <span style="font-size:18px;flex-shrink:0;">🚗</span>
+          <div style="min-width:0;">
+            <div style="font-size:11px;font-weight:600;color:var(--accent);font-family:'Rajdhani',sans-serif;letter-spacing:1px;">SAVED PROFILE</div>
+            <div id="profile-summary" style="font-size:12px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">—</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;">
+          <button onclick="loadProfile()" class="btn btn-ghost" style="font-size:11px;padding:5px 10px;">↺ Load</button>
+          <button onclick="document.getElementById('profile-banner').style.display='none'" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;line-height:1;padding:0 4px;">×</button>
+        </div>
+      </div>
+
+      <div class="card glass-card">
+        <div class="card-head-row">
+          <div class="card-head">Vehicle Information</div>
+          <button onclick="saveProfile()" class="btn btn-ghost" style="font-size:11px;padding:5px 10px;">💾 Save</button>
+        </div>
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+          <div class="field"><label>Brand</label>
+            <select id="v-brand">
+              <option value="">Select brand</option>
+              {% for b in stats.brands %}<option value="{{ b }}">{{ b | title }}</option>{% endfor %}
+            </select></div>
+          <div class="field"><label>Model</label>
+            <select id="v-model">
+              <option value="">Select model</option>
+              {% for m in stats.models %}<option value="{{ m }}">{{ m | title }}</option>{% endfor %}
+            </select></div>
+          <div class="field"><label>Engine Type</label>
+            <select id="v-engine">
+              <option value="">Select type</option>
+              {% for e in stats.engine_types %}<option value="{{ e }}">{{ e | title }}</option>{% endfor %}
+            </select></div>
+          <div class="field"><label>Region</label>
+            <select id="v-region">
+              <option value="">Select region</option>
+              {% for r in stats.regions %}<option value="{{ r }}">{{ r | title }}</option>{% endfor %}
+            </select></div>
+          <div class="field"><label>Make Year</label>
+            <select id="v-year">
+              <option value="">Select year</option>
+              {% for y in stats.years %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
+            </select></div>
+          <div class="field"><label>Service Interval</label>
+            <select id="v-mileage-range">
+              {% for mr in stats.mileage_ranges %}<option value="{{ mr }}">{{ mr }} km</option>{% endfor %}
+            </select></div>
+          <div class="field" style="grid-column:1/-1;"><label>Current Mileage <span class="unit-badge">km</span></label>
+            <input type="number" id="v-mileage" placeholder="e.g. 45000" min="0">
+            <span class="hint">Your current odometer reading</span></div>
+        </div>
+        <div style="margin-top:18px;display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-primary btn-glow" id="svc-btn" onclick="runService()">🔧 Predict Maintenance</button>
+          <button class="btn btn-ghost" onclick="clearSvc()">Clear</button>
+        </div>
+      </div>
+
+      <!-- Dataset coverage -->
+      <div class="card mt-16">
+        <div class="card-head">Dataset Coverage</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          {% for val, lbl, col in [
+            (stats.brands|length,  'Vehicle Brands',  'accent'),
+            (stats.models|length,  'Vehicle Models',  'success'),
+            ('₹'~(stats.avg_cost|default(3200)), 'Avg Cost (INR)', 'warning'),
+            ('14', 'Maintenance Items', 'purple')
+          ] %}
+          <div style="background:var(--bg3);border-radius:6px;padding:12px;text-align:center;border:1px solid var(--border);">
+            <div class="font-display fw-700" style="font-size:22px;color:var(--{{ col }});">{{ val }}</div>
+            <div class="text-xs text-muted" style="margin-top:3px;">{{ lbl }}</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- ── RESULTS ── -->
+    <div>
+      <div id="svc-waiting" class="state-box">
+        <div class="state-icon">🔧</div>
+        <div class="state-title">AWAITING INPUT</div>
+        <div class="state-sub">Fill vehicle details and click "Predict Maintenance"</div>
+      </div>
+      <div id="svc-loading" style="display:none;" class="state-box">
+        <div class="spinner" style="width:40px;height:40px;margin:0 auto 16px;"></div>
+        <div class="state-title">ANALYSING…</div>
+        <div class="state-sub">Running 200-tree RF predictions across 14 maintenance items</div>
+      </div>
+
+      <div id="svc-result" style="display:none;" class="result-animate">
+
+        <!-- ── Cost Hero Card ── -->
+        <div class="card" style="margin-bottom:14px;padding:0;overflow:hidden;border-color:rgba(88,166,255,.3);">
+          <div class="cost-hero">
+            <div class="text-xs text-muted" style="letter-spacing:2px;margin-bottom:8px;">PREDICTED SERVICE COST</div>
+            <div class="cost-main" id="svc-cost">₹0</div>
+
+            <!-- CI boxes -->
+            <div class="cost-ci-row">
+              <div class="cost-ci-box">
+                <div class="cost-ci-label">CI Low · 90%</div>
+                <div class="cost-ci-val" style="color:var(--success);" id="svc-ci-low">—</div>
+              </div>
+              <div style="font-size:12px;color:var(--text3);font-family:'Space Mono',monospace;">···</div>
+              <div class="cost-ci-box" style="border-color:rgba(88,166,255,.3);">
+                <div class="cost-ci-label">Central Estimate</div>
+                <div class="cost-ci-val" style="color:var(--accent);" id="svc-cost-copy">—</div>
+              </div>
+              <div style="font-size:12px;color:var(--text3);font-family:'Space Mono',monospace;">···</div>
+              <div class="cost-ci-box">
+                <div class="cost-ci-label">CI High · 90%</div>
+                <div class="cost-ci-val" style="color:var(--caution);" id="svc-ci-high">—</div>
+              </div>
+            </div>
+
+            <!-- Range bar -->
+            <div class="ci-range-bar"><div class="ci-range-dot" id="ci-dot" style="left:50%;"></div></div>
+            <div class="ci-range-labels">
+              <span id="ci-label-low">—</span>
+              <span style="color:var(--text2);">Cost Range</span>
+              <span id="ci-label-high">—</span>
+            </div>
+
+            <!-- CI explanation -->
+            <div style="margin-top:14px;padding:10px 14px;background:var(--bg3);border-radius:6px;font-size:11px;color:var(--text2);border:1px solid var(--border);" id="svc-ci-txt"></div>
+
+            <!-- Urgency + count badges -->
+            <div class="urgency-row">
+              <span id="svc-urgency" class="badge">—</span>
+              <span id="svc-count"   class="badge badge-accent">—</span>
+            </div>
+          </div>
+
+          <!-- Explain button -->
+          <div style="padding:0 22px 18px;border-top:1px solid var(--border);">
+            <button onclick="runServiceSHAP()" class="btn btn-ghost" style="width:100%;border-color:rgba(188,140,255,.35);color:var(--purple);margin-top:14px;">
+              🔍 Explain Cost — Why This Amount?
+            </button>
+          </div>
+        </div>
+
+        <!-- ── SHAP Cost Attribution Panel ── -->
+        <div id="shap-svc-panel" style="display:none;" class="card result-animate" style="margin-bottom:14px;border-color:rgba(188,140,255,.3);">
+          <div class="card-head" style="color:var(--purple);">Cost Attribution Analysis</div>
+          <p id="shap-svc-summary" class="text-sm text-muted" style="margin-bottom:16px;line-height:1.75;"></p>
+          <div id="shap-svc-bars" style="display:flex;flex-direction:column;gap:2px;"></div>
+          <div style="margin-top:14px;padding:10px 12px;background:var(--bg3);border-radius:6px;font-size:11px;color:var(--text3);border:1px solid var(--border);">
+            <strong style="color:var(--text2);">Baseline (typical 2019 Honda Jazz, 40k km):</strong> ₹<span id="shap-baseline-val">—</span>.
+            Bars show each feature's cost contribution vs this baseline.
+          </div>
+        </div>
+
+        <!-- ── Items Needing Replacement ── -->
+        <div class="card" id="svc-needed-card" style="margin-bottom:14px;">
+          <div class="card-head" style="color:var(--danger);">⚠ Items Requiring Replacement</div>
+          <div class="maint-grid" id="svc-needed-grid"></div>
+        </div>
+
+        <!-- ── Items OK ── -->
+        <div class="card" style="margin-bottom:14px;">
+          <div class="card-head" style="color:var(--success);">✓ Items in Good Condition</div>
+          <div class="maint-grid" id="svc-ok-grid"></div>
+        </div>
+
+        <!-- ── Full Table ── -->
+        <div class="card">
+          <div class="card-head">Full Maintenance Report</div>
+          <table class="data-table" style="font-size:12px;">
+            <thead><tr><th>Maintenance Item</th><th>Status</th><th>Probability</th></tr></thead>
+            <tbody id="svc-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Vehicle Profile ─────────────────────────────────────
+function saveProfile() {
+  const f = getFormVals();
+  if (!f.brand||!f.model||!f.engine||!f.region||!f.year) { showToast('Fill all fields before saving','error'); return; }
+  localStorage.setItem('vaiProfile', JSON.stringify(f));
+  showProfileBanner(f);
+  showToast('Vehicle profile saved ✓','success');
+}
+function loadProfile() {
+  const p = JSON.parse(localStorage.getItem('vaiProfile')||'null');
+  if (!p) { showToast('No saved profile found','info'); return; }
+  setVal('v-brand', p.brand); setVal('v-model', p.model); setVal('v-engine', p.engine);
+  setVal('v-region', p.region); setVal('v-year', p.year);
+  if (p.mileage)      document.getElementById('v-mileage').value = p.mileage;
+  if (p.mileageRange) setVal('v-mileage-range', p.mileageRange);
+  showToast('Profile loaded ✓','success');
+}
+function setVal(id, val) {
+  const el = document.getElementById(id);
+  const opt = [...el.options].find(o => o.value === val);
+  if (opt) el.value = val;
+}
+function getFormVals() {
+  return {
+    brand: document.getElementById('v-brand').value,
+    model: document.getElementById('v-model').value,
+    engine: document.getElementById('v-engine').value,
+    region: document.getElementById('v-region').value,
+    year: document.getElementById('v-year').value,
+    mileage: document.getElementById('v-mileage').value,
+    mileageRange: document.getElementById('v-mileage-range').value,
+  };
+}
+function showProfileBanner(p) {
+  const banner = document.getElementById('profile-banner');
+  const lbl = `${(p.brand||'').replace(/^\w/,c=>c.toUpperCase())} ${(p.model||'').replace(/^\w/,c=>c.toUpperCase())} · ${p.year} · ${p.engine} · ${(p.region||'').replace(/^\w/,c=>c.toUpperCase())}${p.mileage?' · '+parseInt(p.mileage).toLocaleString('en-IN')+' km':''}`;
+  document.getElementById('profile-summary').textContent = lbl;
+  banner.style.display = 'flex';
+}
+(function initProfile(){
+  const p = JSON.parse(localStorage.getItem('vaiProfile')||'null');
+  if (p) showProfileBanner(p);
+})();
+
+function clearSvc() {
+  ['v-brand','v-model','v-engine','v-region','v-year','v-mileage-range'].forEach(id => document.getElementById(id).selectedIndex=0);
+  document.getElementById('v-mileage').value = '';
+  document.getElementById('svc-waiting').style.display = 'block';
+  document.getElementById('svc-result').style.display  = 'none';
+  document.getElementById('shap-svc-panel').style.display = 'none';
+}
+
+// ── Service Prediction ──────────────────────────────────
+async function runService() {
+  const f = getFormVals();
+  if (!f.brand||!f.model||!f.engine||!f.region||!f.year||!f.mileage) {
+    showToast('Please fill all vehicle details','error'); return;
+  }
+  const btn = document.getElementById('svc-btn');
+  btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Predicting…';
+  document.getElementById('svc-waiting').style.display = 'none';
+  document.getElementById('svc-result').style.display  = 'none';
+  document.getElementById('shap-svc-panel').style.display = 'none';
+  document.getElementById('svc-loading').style.display = 'block';
+  try {
+    const res  = await fetch('/api/predict-service', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({brand:f.brand, model:f.model, engine_type:f.engine, region:f.region,
+        make_year:f.year, mileage:f.mileage, mileage_range:f.mileageRange})});
+    const data = await res.json();
+    document.getElementById('svc-loading').style.display = 'none';
+    renderService(data);
+    window._lastServicePayload = {brand:f.brand, model:f.model, engine_type:f.engine, region:f.region,
+      make_year:f.year, mileage:f.mileage, mileage_range:f.mileageRange};
+  } catch(e) {
+    document.getElementById('svc-loading').style.display = 'none';
+    showToast('Error: '+e.message,'error');
+  }
+  btn.disabled=false; btn.innerHTML='🔧 Predict Maintenance';
+}
+
+function renderService(d) {
+  if (!d.success) { showToast('Error: '+d.error,'error'); return; }
+
+  // Cost display
+  const costFmt = v => '₹'+Math.round(v).toLocaleString('en-IN');
+  document.getElementById('svc-cost').textContent      = costFmt(d.predicted_cost);
+  document.getElementById('svc-cost-copy').textContent = costFmt(d.predicted_cost);
+  document.getElementById('svc-ci-low').textContent    = costFmt(d.ci_low);
+  document.getElementById('svc-ci-high').textContent   = costFmt(d.ci_high);
+  document.getElementById('ci-label-low').textContent  = costFmt(d.ci_low);
+  document.getElementById('ci-label-high').textContent = costFmt(d.ci_high);
+
+  // CI range dot position (0-100%)
+  const range = (d.ci_high - d.ci_low) || 1;
+  const dotPct = Math.max(2, Math.min(98, Math.round((d.predicted_cost - d.ci_low) / range * 100)));
+  document.getElementById('ci-dot').style.left = dotPct + '%';
+
+  document.getElementById('svc-ci-txt').textContent =
+    `90% CI: Based on 200 RF trees — 90% probability true cost is between ${costFmt(d.ci_low)} and ${costFmt(d.ci_high)}  ·  σ = ${costFmt(d.std_dev)}`;
+
+  // Urgency
+  const urgMap = {Low:'badge-success', Medium:'badge-warning', High:'badge-warning', Urgent:'badge-danger'};
+  const urgEl  = document.getElementById('svc-urgency');
+  urgEl.className = 'badge '+(urgMap[d.urgency]||'badge-accent');
+  urgEl.textContent = d.urgency+' Urgency';
+  document.getElementById('svc-count').textContent = d.total_items_needed+' of 14 items need replacement';
+
+  // Needed items grid
+  const neededGrid = document.getElementById('svc-needed-grid');
+  neededGrid.innerHTML = d.items_needed.length
+    ? d.items_needed.map(it =>
+        `<div class="maint-item needed"><span class="maint-dot"></span>
+         <span>${it.label}<br><span class="text-xs text-muted">${it.probability}% prob.</span></span></div>`).join('')
+    : '<p class="text-muted text-sm" style="padding:8px 0;">No items require replacement ✓</p>';
+  document.getElementById('svc-needed-card').style.display = d.items_needed.length ? 'block' : 'none';
+
+  // OK items grid
+  document.getElementById('svc-ok-grid').innerHTML = d.items_not_needed.map(it =>
+    `<div class="maint-item ok"><span class="maint-dot"></span>
+     <span>${it.label}<br><span class="text-xs text-muted">${(100-it.probability).toFixed(1)}% OK</span></span></div>`).join('');
+
+  // Full table
+  document.getElementById('svc-table-body').innerHTML = [...d.items_needed, ...d.items_not_needed].map(it => `
+    <tr>
+      <td>${it.label}</td>
+      <td>${it.needed
+        ? '<span class="badge badge-danger"  style="font-size:9px;">REPLACE</span>'
+        : '<span class="badge badge-success" style="font-size:9px;">OK</span>'}</td>
+      <td><div style="display:flex;align-items:center;gap:8px;">
+        <div style="flex:1;background:var(--bg3);border-radius:100px;height:4px;overflow:hidden;">
+          <div style="height:100%;width:${it.probability}%;background:${it.needed?'var(--danger)':'var(--success)'};border-radius:100px;transition:width .6s;"></div>
+        </div>
+        <span class="mono" style="font-size:10px;color:var(--text2);min-width:36px;">${it.probability}%</span>
+      </div></td>
+    </tr>`).join('');
+
+  document.getElementById('svc-result').style.display = 'block';
+  window._lastService = d;
+  showToast(`Service prediction complete · ₹${Math.round(d.predicted_cost).toLocaleString('en-IN')}`, 'success');
+}
+
+// ── Service SHAP ────────────────────────────────────────
+async function runServiceSHAP() {
+  if (!window._lastServicePayload) { showToast('Run prediction first','error'); return; }
+  const panel = document.getElementById('shap-svc-panel');
+  document.getElementById('shap-svc-bars').innerHTML = '<div class="state-sub" style="padding:12px 0;">Computing cost attribution…</div>';
+  panel.style.display = 'block';
+  panel.classList.add('result-animate');
+  try {
+    const res = await fetch('/api/explain-service', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(window._lastServicePayload)});
+    const d = await res.json();
+    if (!d.success) { showToast('SHAP error: '+d.error,'error'); return; }
+
+    document.getElementById('shap-svc-summary').textContent = d.summary;
+    document.getElementById('shap-baseline-val').textContent = Math.round(d.baseline_cost).toLocaleString('en-IN');
+    const maxAbs = Math.max(...d.features.map(f => Math.abs(f.contribution)), 1);
+
+    document.getElementById('shap-svc-bars').innerHTML = d.features.map(f => {
+      const pos  = f.contribution >= 0;
+      const barW = Math.round(Math.abs(f.contribution) / maxAbs * 100);
+      const col  = pos ? 'var(--danger)' : 'var(--success)';
+      const sign = pos ? '+' : '−';
+      const amt  = Math.abs(Math.round(f.contribution));
+      const bgcol= pos ? 'rgba(248,81,73,.1)' : 'rgba(63,185,80,.08)';
+      return `<div class="shap-row" style="background:${bgcol};border-radius:5px;padding:8px 10px;margin-bottom:2px;border-bottom:none;">
+        <div style="font-size:11px;color:var(--text2);line-height:1.3;">${f.label}<br><span style="font-size:9px;color:var(--text3);">${f.value}</span></div>
+        <div class="shap-bar-track">
+          <div class="shap-bar-fill" style="width:${barW}%;background:${col};"></div>
+        </div>
+        <div class="shap-val" style="color:${col};">${sign}₹${amt.toLocaleString('en-IN')}</div>
+      </div>`;
+    }).join('');
+    showToast('Cost breakdown ready','success');
+  } catch(e) { showToast('Error: '+e.message,'error'); }
+}
+</script>
+{% endblock %}

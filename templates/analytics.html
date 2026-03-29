@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% block title %}Analytics — VehicleAI{% endblock %}
+{% block content %}
+
+<div class="page-hero">
+  <div class="overline">Module 07 — Model Analytics</div>
+  <h1>ML <span>Analytics</span> Dashboard</h1>
+  <p>25+ detailed training graphs covering model performance, feature importance, error analysis, SHAP explainability, and data distributions for both engine and service prediction models.</p>
+</div>
+
+<div class="section">
+  <!-- KPIs -->
+  <h2 class="section-title">Model Performance KPIs</h2>
+  <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(165px,1fr)); gap:14px; margin-bottom:36px;">
+    {% for val, lbl, sub, col in [
+      ('66.3%',  'Engine Accuracy',   'Gradient Boosting', 'accent'),
+      ('66.7%',  'Cross-Validation',  '5-Fold CV Mean',    'success'),
+      ('0.868',  'Cost Model R²',     'Service Regression','purple'),
+      ('₹404',   'Cost MAE',          'Mean Abs. Error',   'warning'),
+      ('97.3%',  'Item Accuracy',     'Avg 14 classifiers','success'),
+      ('20K+',   'Training Records',  'Engine + Service',  'accent'),
+    ] %}
+    <div class="stat-card">
+      <div class="text-xs text-muted" style="letter-spacing:1px; margin-bottom:5px;">{{ sub }}</div>
+      <div class="stat-val" style="font-size:26px; color:var(--{{ col }});">{{ val }}</div>
+      <div class="stat-label">{{ lbl }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('engine',this)">⚡ Engine Model</button>
+    <button class="tab-btn" onclick="switchTab('service',this)">🔧 Service Model</button>
+    <button class="tab-btn" onclick="switchTab('rul',this)">⏱ RUL Prediction</button>
+    <button class="tab-btn" onclick="switchTab('anomaly',this)">🔬 Anomaly Detection</button>
+    <button class="tab-btn" onclick="switchTab('shap',this)">🔍 SHAP Analysis</button>
+  </div>
+
+  <!-- Engine Graphs -->
+  <div class="tab-content active" id="tab-engine">
+    <p class="text-muted text-sm" style="margin-bottom:18px;">Engine condition classification trained on 19,535 records — comparing Random Forest, Gradient Boosting, Decision Tree, and KNN models.</p>
+    <div class="graph-grid">
+      {% for g in graphs_eng %}
+      <div class="graph-card" onclick="openModal('{{ url_for('static', filename='images/graphs/' + g.file) }}','{{ g.title }}','{{ g.desc }}')">
+        <img src="{{ url_for('static', filename='images/graphs/' + g.file) }}" alt="{{ g.title }}" class="graph-img" loading="lazy">
+        <div class="graph-info">
+          <div class="graph-title">{{ g.title }}</div>
+          <div class="graph-desc">{{ g.desc }}</div>
+          <div style="margin-top:7px;"><span class="badge badge-accent" style="font-size:9px;">Click to expand</span></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Service Graphs -->
+  <div class="tab-content" id="tab-service">
+    <p class="text-muted text-sm" style="margin-bottom:18px;">Service cost regression &amp; multi-label classification trained on 1,139 real service records across 14 maintenance categories.</p>
+    <div class="graph-grid">
+      {% for g in graphs_svc %}
+      <div class="graph-card" onclick="openModal('{{ url_for('static', filename='images/graphs/' + g.file) }}','{{ g.title }}','{{ g.desc }}')">
+        <img src="{{ url_for('static', filename='images/graphs/' + g.file) }}" alt="{{ g.title }}" class="graph-img" loading="lazy">
+        <div class="graph-info">
+          <div class="graph-title">{{ g.title }}</div>
+          <div class="graph-desc">{{ g.desc }}</div>
+          <div style="margin-top:7px;"><span class="badge badge-success" style="font-size:9px;">Click to expand</span></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- RUL Graphs -->
+  <div class="tab-content" id="tab-rul">
+    <p class="text-muted text-sm" style="margin-bottom:18px;">Remaining Useful Life regression model — predicts engine km and days remaining. Random Forest trained on degradation patterns across 19,535 engine records with 80% confidence intervals.</p>
+
+    <!-- RUL model graphs -->
+    <h3 class="section-title" style="font-size:17px; margin-bottom:16px;">RUL Model Performance</h3>
+    <div class="graph-grid" style="margin-bottom:32px;">
+      {% for g in graphs_adv if 'rul' in g.file %}
+      <div class="graph-card" onclick="openModal('{{ url_for('static', filename='images/graphs/' + g.file) }}','{{ g.title }}','{{ g.desc }}')">
+        <img src="{{ url_for('static', filename='images/graphs/' + g.file) }}" alt="{{ g.title }}" class="graph-img" loading="lazy">
+        <div class="graph-info">
+          <div class="graph-title">{{ g.title }}</div>
+          <div class="graph-desc">{{ g.desc }}</div>
+          <div style="margin-top:7px;"><span class="badge badge-accent" style="font-size:9px;">Click to expand</span></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Risk & What-If graphs -->
+    <h3 class="section-title" style="font-size:17px; margin-bottom:16px;">Risk Score &amp; What-If Analysis</h3>
+    <div class="graph-grid">
+      {% for g in graphs_adv if 'rul' not in g.file and 'anomaly' not in g.file %}
+      <div class="graph-card" onclick="openModal('{{ url_for('static', filename='images/graphs/' + g.file) }}','{{ g.title }}','{{ g.desc }}')">
+        <img src="{{ url_for('static', filename='images/graphs/' + g.file) }}" alt="{{ g.title }}" class="graph-img" loading="lazy">
+        <div class="graph-info">
+          <div class="graph-title">{{ g.title }}</div>
+          <div class="graph-desc">{{ g.desc }}</div>
+          <div style="margin-top:7px;"><span class="badge badge-warning" style="font-size:9px;">Click to expand</span></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Anomaly Detection Graphs -->
+  <div class="tab-content" id="tab-anomaly">
+    <p class="text-muted text-sm" style="margin-bottom:18px;">Isolation Forest anomaly detector — trained exclusively on 7,218 normal engine records. Catches multi-parameter outliers invisible to single-threshold rules.</p>
+    <div class="graph-grid" style="margin-bottom:32px;">
+      {% for g in graphs_adv if 'anomaly' in g.file %}
+      <div class="graph-card" onclick="openModal('{{ url_for('static', filename='images/graphs/' + g.file) }}','{{ g.title }}','{{ g.desc }}')">
+        <img src="{{ url_for('static', filename='images/graphs/' + g.file) }}" alt="{{ g.title }}" class="graph-img" loading="lazy">
+        <div class="graph-info">
+          <div class="graph-title">{{ g.title }}</div>
+          <div class="graph-desc">{{ g.desc }}</div>
+          <div style="margin-top:7px;"><span class="badge badge-danger" style="font-size:9px;">Click to expand</span></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Anomaly model info card -->
+    <div class="card" style="border-color:rgba(248,81,73,.25);">
+      <div class="card-head" style="color:var(--danger);">About Isolation Forest</div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-bottom:14px;">
+        {% for val,lbl in [('7,218','Normal Training Samples'),('5%','Contamination Rate'),('100+','Isolation Trees'),('6','Input Features')] %}
+        <div style="background:var(--bg3); border-radius:6px; padding:12px; text-align:center; border:1px solid var(--border);">
+          <div class="font-display fw-700" style="font-size:22px; color:var(--danger);">{{ val }}</div>
+          <div class="text-xs text-muted">{{ lbl }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      <p class="text-muted text-sm" style="line-height:1.7;">The model builds random isolation trees. Anomalous engine readings are isolated in fewer splits (shorter path length) than normal readings — giving a 0–100 anomaly score. Score &gt;50 flags the engine as anomalous. Trained only on normal data so it generalises to any type of previously-unseen fault pattern.</p>
+      <div style="margin-top:14px;">
+        <a href="/anomaly" class="btn btn-ghost" style="border-color:rgba(248,81,73,.4); color:var(--danger); font-size:11px;">🔬 Try Anomaly Detector →</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- SHAP Graphs -->
+  <div class="tab-content" id="tab-shap">
+    <p class="text-muted text-sm" style="margin-bottom:18px;">Global SHAP analysis across 300 training engine samples — showing which parameters drive predictions and in which direction.</p>
+    <div class="graph-grid">
+      {% for file, title, desc in [
+        ('shap_global_importance.png','Global Feature Importance','Mean |SHAP| value per feature showing consistent influence across all predictions.'),
+        ('shap_beeswarm.png',         'Beeswarm Distribution',   '300 engines as dots — x-axis = SHAP contribution, colour = parameter value magnitude.'),
+        ('shap_dependence.png',       'Dependence Plots',        'Feature value vs SHAP contribution for top 3 features with polynomial trend lines.'),
+        ('shap_direction_heatmap.png','Direction Heatmap',       'Mean positive vs negative SHAP per feature — shows typical prediction direction per parameter.'),
+      ] %}
+      <div class="graph-card" onclick="openModal('{{ url_for('static', filename='images/graphs/' ~ file) }}','{{ title }}','{{ desc }}')">
+        <img src="{{ url_for('static', filename='images/graphs/' ~ file) }}" alt="{{ title }}" class="graph-img" loading="lazy">
+        <div class="graph-info">
+          <div class="graph-title">{{ title }}</div>
+          <div class="graph-desc">{{ desc }}</div>
+          <div style="margin-top:7px;"><span class="badge badge-purple" style="font-size:9px;">Click to expand</span></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div style="margin-top:18px; text-align:center;">
+      <a href="/shap" class="btn btn-ghost" style="border-color:rgba(188,140,255,.4); color:var(--purple);">🔍 Run Interactive SHAP Explanation →</a>
+    </div>
+  </div>
+
+  <!-- Models table -->
+  <div style="margin-top:40px; border-top:1px solid var(--border); padding-top:30px;">
+    <h2 class="section-title">Models Trained</h2>
+    <table class="data-table">
+      <thead>
+        <tr><th>Model</th><th>Task</th><th>Algorithm</th><th>Metric</th><th>Score</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        {% for model, task, algo, metric, score, col in [
+          ('Engine Classifier',     'Binary Classification',      'Gradient Boosting',          'Test Accuracy',  '66.29%', 'accent'),
+          ('Engine (Random Forest)','Binary Classification',      'Random Forest · 150 trees',  'Test Accuracy',  '65.70%', 'accent'),
+          ('Engine (Decision Tree)','Binary Classification',      'Decision Tree depth=10',     'Test Accuracy',  '63.76%', 'text2'),
+          ('Engine (KNN)',          'Binary Classification',      'KNN k=7',                    'Test Accuracy',  '63.32%', 'text2'),
+          ('Service Cost Predictor','Regression',                 'Random Forest · 200 trees',  'R² Score',       '0.8676', 'success'),
+          ('Maintenance Items (×14)','Multi-Label Classification','Random Forest · 100 trees',  'Avg Accuracy',   '97.3%',  'success'),
+          ('Isolation Forest',      'Anomaly Detection',          'Isolation Forest contamination=0.05','AUC', 'N/A (unsupervised)', 'warning'),
+          ('RUL Regressor (km)',    'Regression',                 'Random Forest · 200 trees',  'R²',             '~0.91',  'accent'),
+          ('RUL Regressor (days)', 'Regression',                 'Random Forest · 200 trees',  'R²',             '~0.89',  'accent'),
+        ] %}
+        <tr>
+          <td class="font-display fw-700" style="font-size:13px;">{{ model }}</td>
+          <td>{{ task }}</td>
+          <td class="mono" style="font-size:11px;">{{ algo }}</td>
+          <td>{{ metric }}</td>
+          <td class="font-display fw-700" style="color:var(--{{ col }});">{{ score }}</td>
+          <td><span class="badge {% if col == 'success' %}badge-success{% elif col == 'warning' %}badge-warning{% else %}badge-accent{% endif %}" style="font-size:9px;">Active</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Modal -->
+<div id="graph-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,.88); backdrop-filter:blur(6px); padding:80px 20px 40px; overflow-y:auto;" onclick="if(event.target===this)closeModal()">
+  <div style="max-width:1000px; margin:auto; background:var(--bg2); border:1px solid var(--border2); border-radius:12px; overflow:hidden;">
+    <div style="padding:14px 18px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border);">
+      <div>
+        <div class="font-display fw-700" style="font-size:15px; letter-spacing:1px;" id="modal-title">—</div>
+        <div class="text-sm text-muted" id="modal-desc">—</div>
+      </div>
+      <button onclick="closeModal()" style="background:none; border:1px solid var(--border2); color:var(--text2); padding:5px 12px; border-radius:4px; cursor:pointer; font-size:16px;">✕</button>
+    </div>
+    <img id="modal-img" src="" alt="" style="width:100%; display:block;">
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function switchTab(name, btn){
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+  const tab = document.getElementById('tab-'+name);
+  if(tab) tab.classList.add('active');
+  if(btn) btn.classList.add('active');
+}
+function openModal(src, title, desc){
+  document.getElementById('modal-img').src=src;
+  document.getElementById('modal-title').textContent=title;
+  document.getElementById('modal-desc').textContent=desc;
+  document.getElementById('graph-modal').style.display='block';
+}
+function closeModal(){
+  document.getElementById('graph-modal').style.display='none';
+}
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
+</script>
+{% endblock %}

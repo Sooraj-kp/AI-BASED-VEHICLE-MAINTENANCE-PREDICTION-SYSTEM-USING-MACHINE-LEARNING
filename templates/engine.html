@@ -1,0 +1,448 @@
+{% extends "base.html" %}
+{% block title %}Engine Scan — VehicleAI{% endblock %}
+{% block content %}
+
+<div class="page-hero">
+  <div class="overline">Module 01 — Engine Diagnostics</div>
+  <h1>Engine <span>Condition</span> Scanner</h1>
+  <p>6 real-time sensor parameters · Gradient Boosting classifier · Fault probability, health score, risk level, anomaly status &amp; estimated RUL in one scan.</p>
+  <div class="hero-badges">
+    <span class="badge badge-accent">Gradient Boosting · 19,535 records</span>
+    <span class="badge badge-success">6 Sensor Parameters</span>
+    <span class="badge badge-purple">SHAP Explainable</span>
+  </div>
+</div>
+
+<div class="section">
+  <div class="two-col-grid" style="display:grid; grid-template-columns:1.15fr 1fr; gap:28px; align-items:start;">
+
+    <!-- LEFT: FORM -->
+    <div>
+      <div class="card glass-card">
+        <div class="card-head-row">
+          <div class="card-head">Engine Sensor Parameters</div>
+          <div id="profile-status-eng" style="font-size:11px;color:var(--success);display:none;align-items:center;gap:6px;">
+            ✓ Profile loaded
+            <button onclick="clearProfile()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:10px;">clear</button>
+          </div>
+        </div>
+
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+          <div class="field">
+            <label>Engine RPM</label>
+            <input type="number" id="f-rpm" value="1500" min="300" max="5000" placeholder="e.g. 1500">
+            <span class="hint">Normal: 700–3,000</span>
+          </div>
+          <div class="field">
+            <label>Lub Oil Pressure <span class="unit-badge">bar</span></label>
+            <input type="number" id="f-oil-p" value="3.5" step="0.01" min="0.1" max="10" placeholder="e.g. 3.5">
+            <span class="hint">Normal: 2.0–6.0</span>
+          </div>
+          <div class="field">
+            <label>Fuel Pressure <span class="unit-badge">bar</span></label>
+            <input type="number" id="f-fuel-p" value="14.5" step="0.01" min="1" max="40" placeholder="e.g. 14.5">
+            <span class="hint">Normal: 8.0–25.0</span>
+          </div>
+          <div class="field">
+            <label>Coolant Pressure <span class="unit-badge">bar</span></label>
+            <input type="number" id="f-cool-p" value="2.5" step="0.01" min="0.1" max="8" placeholder="e.g. 2.5">
+            <span class="hint">Normal: 1.0–4.0</span>
+          </div>
+          <div class="field">
+            <label>Lub Oil Temp <span class="unit-badge">°C</span></label>
+            <input type="number" id="f-oil-t" value="80" step="0.1" min="20" max="200" placeholder="e.g. 80">
+            <span class="hint">Normal: 60–100</span>
+          </div>
+          <div class="field">
+            <label>Coolant Temp <span class="unit-badge">°C</span></label>
+            <input type="number" id="f-cool-t" value="82" step="0.1" min="20" max="160" placeholder="e.g. 82">
+            <span class="hint">Normal: 70–95</span>
+          </div>
+        </div>
+
+        <div style="margin-top:14px; display:flex; gap:6px; flex-wrap:wrap;">
+          <button class="btn btn-ghost" style="font-size:10px;padding:5px 10px;" onclick="loadPreset('normal')">✓ Normal</button>
+          <button class="btn btn-ghost" style="font-size:10px;padding:5px 10px;border-color:rgba(240,136,62,.4);color:var(--caution);" onclick="loadPreset('caution')">⚠ Caution</button>
+          <button class="btn btn-ghost" style="font-size:10px;padding:5px 10px;border-color:rgba(248,81,73,.4);color:var(--danger);" onclick="loadPreset('fault')">✕ Fault</button>
+        </div>
+
+        <div style="margin-top:16px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <button class="btn btn-primary btn-glow" id="scan-btn" onclick="runScan()">⚡ Run Engine Scan</button>
+          <button class="btn btn-ghost" onclick="clearForm()">Clear</button>
+        </div>
+      </div>
+
+      <div class="card mt-16">
+        <div class="card-head">Sensor Reference Ranges</div>
+        <table class="data-table">
+          <thead><tr><th>Parameter</th><th>Healthy</th><th>Warning</th><th>Critical</th></tr></thead>
+          <tbody>
+            <tr><td>Engine RPM</td><td class="text-success">700–3,000</td><td class="text-warning">3,000–4,500</td><td class="text-danger">&gt;4,500</td></tr>
+            <tr><td>Lub Oil Pressure</td><td class="text-success">2.0–6.0 bar</td><td class="text-warning">1.5–2.0</td><td class="text-danger">&lt;1.5</td></tr>
+            <tr><td>Fuel Pressure</td><td class="text-success">8–22 bar</td><td class="text-warning">6–8</td><td class="text-danger">&lt;6</td></tr>
+            <tr><td>Coolant Pressure</td><td class="text-success">1.0–4.0 bar</td><td class="text-warning">0.8–1.0</td><td class="text-danger">&lt;0.8</td></tr>
+            <tr><td>Lub Oil Temp</td><td class="text-success">60–100 °C</td><td class="text-warning">100–120</td><td class="text-danger">&gt;120</td></tr>
+            <tr><td>Coolant Temp</td><td class="text-success">70–95 °C</td><td class="text-warning">95–105</td><td class="text-danger">&gt;105</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- RIGHT: RESULTS -->
+    <div>
+      <div id="eng-waiting" class="state-box">
+        <div class="state-icon">⚡</div>
+        <div class="state-title">AWAITING SCAN</div>
+        <div class="state-sub">Enter sensor readings and click "Run Engine Scan"</div>
+      </div>
+
+      <div id="eng-loading" style="display:none;" class="state-box">
+        <div class="spinner" style="width:40px;height:40px;margin:0 auto 16px;"></div>
+        <div class="state-title">ANALYSING ENGINE…</div>
+        <div class="state-sub">Running Gradient Boosting inference</div>
+      </div>
+
+      <div id="eng-result" style="display:none;" class="result-animate">
+
+        <!-- Status header panel -->
+        <div id="eng-panel" class="result-panel success" style="margin-bottom:16px;">
+          <div class="result-header" id="eng-header"></div>
+
+          <!-- BUG FIX: result-body wrapper for proper padding -->
+          <div class="result-body">
+            <p id="eng-msg" class="text-sm text-muted" style="margin-bottom:20px;line-height:1.75;"></p>
+
+            <!-- CONFIDENCE METER -->
+            <div class="confidence-meter-wrap">
+
+              <!-- Top row: label + live percentage -->
+              <div class="conf-meter-top">
+                <span class="text-xs" style="letter-spacing:1.5px;font-family:'Rajdhani',sans-serif;font-weight:700;color:var(--text2);">FAULT PROBABILITY METER</span>
+                <span class="conf-pct-label" id="conf-pct-label">—</span>
+              </div>
+
+              <!-- Track outer: overflow:visible so needle stays unclipped -->
+              <div class="conf-track-outer">
+                <!-- Track: overflow:hidden clips fill+zones to rounded corners.
+                     Background is a faint zone gradient — always visible. -->
+                <div class="conf-track">
+                  <!-- Gradient layer — always full width, revealed by mask -->
+                  <div class="conf-gradient"></div>
+                  <!-- Mask — dark overlay shrinks from right to reveal fp% of gradient -->
+                  <div class="conf-mask" id="conf-mask"></div>
+                  <!-- Zone labels overlay — gradient aligns exactly to zone boundaries -->
+                  <div class="conf-zones">
+                    <div class="conf-zone zone-ok">HEALTHY</div>
+                    <div class="conf-zone zone-caution">CAUTION</div>
+                    <div class="conf-zone zone-warn">WARN</div>
+                    <div class="conf-zone zone-crit">CRITICAL</div>
+                  </div>
+                </div>
+                <!-- Needle: outside conf-track — not clipped by overflow:hidden -->
+                <div class="conf-needle" id="conf-needle"></div>
+              </div>
+
+              <!-- Tick marks at zone boundaries + scale labels -->
+              <div class="conf-scale">
+                <div class="conf-tick" style="left:40%"></div>
+                <div class="conf-tick" style="left:60%"></div>
+                <div class="conf-tick" style="left:75%"></div>
+                <span class="conf-scale-lbl first" style="left:0%">0%</span>
+                <span class="conf-scale-lbl" style="left:40%">40%</span>
+                <span class="conf-scale-lbl" style="left:60%">60%</span>
+                <span class="conf-scale-lbl" style="left:75%">75%</span>
+                <span class="conf-scale-lbl last"  style="left:100%">100%</span>
+              </div>
+
+            </div><!-- /confidence-meter-wrap -->
+
+            <!-- Health gauge arc + large fault probability -->
+            <div style="display:flex;gap:20px;align-items:center;margin-top:20px;padding-top:18px;border-top:1px solid var(--border);">
+              <!-- SVG semicircle health gauge -->
+              <div style="text-align:center;flex-shrink:0;">
+                <div class="text-xs text-muted" style="letter-spacing:1px;margin-bottom:6px;">HEALTH SCORE</div>
+                <svg width="112" height="68" viewBox="0 0 140 82">
+                  <path d="M14 72 A56 56 0 0 1 126 72" fill="none" stroke="var(--bg3)" stroke-width="12" stroke-linecap="round"/>
+                  <path id="eng-arc" d="M14 72 A56 56 0 0 1 126 72" fill="none" stroke="#3fb950" stroke-width="12"
+                        stroke-linecap="round" stroke-dasharray="0 176"
+                        style="transition:stroke-dasharray 1.2s cubic-bezier(.4,0,.2,1),stroke .4s;"/>
+                  <text id="eng-gauge-txt" x="70" y="66" text-anchor="middle" fill="#e6edf3"
+                        font-family="Rajdhani" font-size="22" font-weight="700">—</text>
+                </svg>
+              </div>
+              <!-- Large fault probability number -->
+              <div style="flex:1;">
+                <div class="text-xs text-muted" style="letter-spacing:1px;margin-bottom:4px;">FAULT PROBABILITY</div>
+                <div id="eng-fault-pct" style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:48px;line-height:1;color:var(--success);">—</div>
+                <div id="eng-condition" style="font-size:11px;margin-top:8px;font-family:'Rajdhani',sans-serif;font-weight:600;letter-spacing:1.5px;color:var(--text3);">—</div>
+              </div>
+            </div>
+
+            <!-- Alert level pills -->
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:18px;">
+              {% for lvl in ['NORMAL','CAUTION','WARNING','CRITICAL'] %}
+              <div id="pill-{{ lvl }}" class="alert-pill">{{ lvl }}</div>
+              {% endfor %}
+            </div>
+          </div><!-- /result-body -->
+        </div><!-- /result-panel -->
+
+        <!-- Recommendations -->
+        <div id="eng-recs-card" class="card" style="margin-bottom:14px;display:none;">
+          <div class="card-head" id="eng-recs-head">Recommendations</div>
+          <div id="eng-rec-list"></div>
+        </div>
+
+        <!-- Metrics -->
+        <div id="eng-metrics" class="card" style="display:none;">
+          <div class="card-head">Engine Metrics</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;">
+            <div class="metric-tile">
+              <div class="text-xs text-muted">RISK SCORE</div>
+              <div class="metric-val" id="eng-risk">—</div>
+              <div class="text-xs text-muted">/100</div>
+            </div>
+            <div class="metric-tile">
+              <div class="text-xs text-muted">LIFE (km)</div>
+              <div class="metric-val" style="color:var(--accent);" id="eng-rul">—</div>
+            </div>
+            <div class="metric-tile">
+              <div class="text-xs text-muted">STATUS</div>
+              <div class="metric-val" style="font-size:12px;" id="eng-anom">—</div>
+            </div>
+          </div>
+
+          <!-- Anomaly risk bar + days remaining -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
+            <div style="background:var(--bg3);border-radius:6px;padding:10px;border:1px solid var(--border);">
+              <div class="text-xs text-muted" style="margin-bottom:5px;">ANOMALY RISK</div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div style="flex:1;background:var(--bg);border-radius:100px;height:6px;overflow:hidden;">
+                  <div id="eng-anom-bar" style="height:100%;width:0%;border-radius:100px;transition:width .9s cubic-bezier(.4,0,.2,1);"></div>
+                </div>
+                <span class="mono" style="font-size:11px;min-width:36px;" id="eng-anom-pct">—</span>
+              </div>
+            </div>
+            <div style="background:var(--bg3);border-radius:6px;padding:10px;border:1px solid var(--border);">
+              <div class="text-xs text-muted" style="margin-bottom:5px;">LIFE (days)</div>
+              <div class="font-display fw-700" style="font-size:15px;color:var(--accent);" id="eng-rul-days">—</div>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button id="pdf-btn" onclick="downloadPDF()" class="btn btn-ghost" style="flex:1;border-color:rgba(188,140,255,.4);color:var(--purple);">📄 PDF Report</button>
+            <a href="/shap" class="btn btn-ghost" style="flex:1;border-color:rgba(88,166,255,.3);">🔍 SHAP Explain →</a>
+          </div>
+        </div>
+
+      </div><!-- /eng-result -->
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Profile ───────────────────────────────────────────
+function clearProfile(){
+  localStorage.removeItem('vaiProfile');
+  document.getElementById('profile-status-eng').style.display='none';
+  showToast('Vehicle profile cleared','info');
+}
+(function initProfile(){
+  const p=JSON.parse(localStorage.getItem('vaiProfile')||'null');
+  if(p) document.getElementById('profile-status-eng').style.display='flex';
+})();
+
+// ── Presets ───────────────────────────────────────────
+const PRESETS={
+  normal:  {'f-rpm':1500,'f-oil-p':3.5, 'f-fuel-p':14.5,'f-cool-p':2.5,'f-oil-t':80, 'f-cool-t':82},
+  caution: {'f-rpm':2300,'f-oil-p':1.9, 'f-fuel-p':7.8, 'f-cool-p':0.9,'f-oil-t':102,'f-cool-t':96},
+  fault:   {'f-rpm':420, 'f-oil-p':1.1, 'f-fuel-p':5.2, 'f-cool-p':0.6,'f-oil-t':130,'f-cool-t':112},
+};
+function loadPreset(t){ Object.entries(PRESETS[t]).forEach(([id,v])=>document.getElementById(id).value=v); }
+
+function clearForm(){
+  ['f-rpm','f-oil-p','f-fuel-p','f-cool-p','f-oil-t','f-cool-t'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('eng-waiting').style.display='block';
+  document.getElementById('eng-result').style.display='none';
+}
+
+// ── Scan ──────────────────────────────────────────────
+async function runScan(){
+  const payload={
+    'Engine rpm':       parseFloat(document.getElementById('f-rpm').value),
+    'Lub oil pressure': parseFloat(document.getElementById('f-oil-p').value),
+    'Fuel pressure':    parseFloat(document.getElementById('f-fuel-p').value),
+    'Coolant pressure': parseFloat(document.getElementById('f-cool-p').value),
+    'lub oil temp':     parseFloat(document.getElementById('f-oil-t').value),
+    'Coolant temp':     parseFloat(document.getElementById('f-cool-t').value),
+  };
+  if(Object.values(payload).some(v=>isNaN(v))){ showToast('Please fill all fields','error'); return; }
+
+  const btn=document.getElementById('scan-btn');
+  btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Scanning…';
+  document.getElementById('eng-waiting').style.display='none';
+  document.getElementById('eng-result').style.display='none';
+  document.getElementById('eng-loading').style.display='block';
+
+  try{
+    const res=await fetch('/api/predict-engine',{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)
+    });
+    const data=await res.json();
+    document.getElementById('eng-loading').style.display='none';
+    renderResult(data);
+    // Save for SHAP page auto-populate
+    sessionStorage.setItem('lastEngineParams', JSON.stringify({parameters:payload}));
+    window._lastEngine=data;
+  }catch(e){
+    document.getElementById('eng-loading').style.display='none';
+    document.getElementById('eng-waiting').style.display='block';
+    showToast('Network error: '+e.message,'error');
+  }
+  btn.disabled=false; btn.innerHTML='⚡ Run Engine Scan';
+}
+
+// ── Pill styles ───────────────────────────────────────
+const PILL_STYLES={
+  NORMAL:  {bg:'rgba(63,185,80,.2)',  border:'rgba(63,185,80,.7)',  color:'#3fb950',shadow:'rgba(63,185,80,.3)'},
+  CAUTION: {bg:'rgba(240,136,62,.2)', border:'rgba(240,136,62,.7)', color:'#f0883e',shadow:'rgba(240,136,62,.3)'},
+  WARNING: {bg:'rgba(210,153,34,.2)', border:'rgba(210,153,34,.7)', color:'#d29922',shadow:'rgba(210,153,34,.3)'},
+  CRITICAL:{bg:'rgba(248,81,73,.2)',  border:'rgba(248,81,73,.7)',  color:'#f85149',shadow:'rgba(248,81,73,.3)'},
+};
+
+// ── Render result ─────────────────────────────────────
+function renderResult(data){
+  if(!data.success){ showToast('Error: '+data.error,'error'); return; }
+
+  const col = data.alert_color||'success';   // 'success'|'caution'|'warning'|'danger'
+  const fp  = data.fault_probability;         // 0–100
+  const hs  = data.health_score;              // 0–100
+
+  // Result panel colour
+  document.getElementById('eng-panel').className='result-panel '+col;
+
+  // Header badge
+  const bMap={success:'badge-success',caution:'badge-caution',warning:'badge-warning',danger:'badge-danger'};
+  document.getElementById('eng-header').innerHTML=
+    `<span>${data.label}</span><span class="badge ${bMap[col]||'badge-success'}">${data.alert_level}</span>`;
+  document.getElementById('eng-msg').textContent=data.message;
+
+  // FIX: derive mCol from API's alert_color — never recalculate from fp independently
+  // This guarantees meter needle, label, and badge always show the same colour
+  const COLOR_MAP={success:'#3fb950',caution:'#f0883e',warning:'#d29922',danger:'#f85149'};
+  const mCol=COLOR_MAP[col]||'#3fb950';
+
+  // ── CONFIDENCE METER ──────────────────────────────
+  const mask  =document.getElementById('conf-mask');
+  const needle=document.getElementById('conf-needle');
+  const pctLbl=document.getElementById('conf-pct-label');
+
+  // Percentage label — animated counter + colour
+  pctLbl.style.color=mCol;
+  animateCounter(pctLbl, 0, fp, 1100, v=>v.toFixed(1)+'%');
+
+  // Mask reveal: mask starts at width:100% (fully covering gradient).
+  // Shrinking to (100-fp)% reveals fp% of gradient from the left.
+  // Width transition is the most reliable CSS animation — no clip-path tricks needed.
+  mask.style.transition = 'none';
+  mask.style.width      = '100%';
+  void mask.offsetWidth;                        // force synchronous reflow
+  mask.style.transition = 'width 1s cubic-bezier(.4,0,.2,1)';
+  mask.style.width      = (100 - fp).toFixed(2) + '%';
+
+  // Needle — moves to fp% with matching alert colour
+  needle.style.left            = Math.max(1, fp).toFixed(2) + '%';
+  needle.style.backgroundColor = mCol;
+  needle.style.color           = mCol;
+
+  // ── HEALTH GAUGE ARC ──────────────────────────────
+  // Arc length for r=56 semicircle: π*56 ≈ 175.9 → use 176
+  const ARC=176;
+  const gCol=col==='success'?'#3fb950':col==='caution'?'#f0883e':col==='warning'?'#d29922':'#f85149';
+  setTimeout(()=>{
+    const dash=(hs/100*ARC).toFixed(1);
+    document.getElementById('eng-arc').style.strokeDasharray=dash+' '+(ARC-dash);
+    document.getElementById('eng-arc').style.stroke=gCol;
+  }, 100);
+  document.getElementById('eng-gauge-txt').textContent=Math.round(hs)+'%';
+
+  // ── LARGE FAULT PROBABILITY ───────────────────────
+  const fEl=document.getElementById('eng-fault-pct');
+  fEl.style.color=mCol;
+  animateCounter(fEl, 0, fp, 900, v=>v.toFixed(1)+'%');
+
+  const condEl=document.getElementById('eng-condition');
+  condEl.style.color=mCol;
+  condEl.textContent=data.alert_level+' — '+data.label.toUpperCase();
+
+  // ── ALERT PILLS ───────────────────────────────────
+  ['NORMAL','CAUTION','WARNING','CRITICAL'].forEach(lvl=>{
+    const el=document.getElementById('pill-'+lvl);
+    const st=PILL_STYLES[lvl];
+    if(lvl===data.alert_level){
+      el.style.cssText=`background:${st.bg};border-color:${st.border};color:${st.color};box-shadow:0 0 12px ${st.shadow};`;
+    } else {
+      el.style.cssText='';  // Reset to CSS class defaults (grey)
+    }
+  });
+
+  // ── RECOMMENDATIONS — from API data (bug fix) ─────
+  const recs=data.recommendations||[];
+  document.getElementById('eng-recs-card').style.display='block';
+  document.getElementById('eng-recs-head').textContent='Recommendations — '+data.alert_level;
+  document.getElementById('eng-rec-list').innerHTML=recs.length
+    ? recs.map((r,i)=>
+        `<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);align-items:flex-start;">
+           <span style="color:${mCol};font-family:'Rajdhani',sans-serif;font-weight:700;font-size:12px;flex-shrink:0;min-width:22px;">0${i+1}</span>
+           <span style="font-size:13px;color:var(--text2);line-height:1.6;">${r}</span>
+         </div>`).join('')
+    : '<p class="text-muted text-sm" style="padding:8px 0;">Engine operating within normal parameters.</p>';
+
+  // ── METRICS ───────────────────────────────────────
+  document.getElementById('eng-metrics').style.display='block';
+
+  const rEl=document.getElementById('eng-risk');
+  rEl.style.color=data.risk_score>70?'var(--danger)':data.risk_score>40?'var(--warning)':'var(--success)';
+  animateCounter(rEl, 0, data.risk_score, 700, v=>Math.round(v));
+
+  document.getElementById('eng-rul').textContent=(data.rul_km/1000).toFixed(1)+'k km';
+
+  // FIX: use rul_days directly from API response
+  const days=Math.round(data.rul_days||data.rul_km/50);
+  document.getElementById('eng-rul-days').textContent='≈ '+days.toLocaleString('en-IN')+' days';
+
+  const anomAmt=Math.min(data.anomaly_risk,100);
+  const anomCol=anomAmt>70?'var(--danger)':anomAmt>40?'var(--warning)':'var(--success)';
+  document.getElementById('eng-anom').textContent=data.anomaly_flag;
+  document.getElementById('eng-anom').style.color=data.anomaly_flag==='ANOMALY'?'var(--danger)':'var(--success)';
+  document.getElementById('eng-anom-bar').style.background=anomCol;
+  setTimeout(()=>{ document.getElementById('eng-anom-bar').style.width=anomAmt+'%'; }, 120);
+  document.getElementById('eng-anom-pct').textContent=anomAmt.toFixed(0)+'%';
+  document.getElementById('eng-anom-pct').style.color=anomCol;
+
+  // Show
+  document.getElementById('eng-result').style.display='block';
+  showToast('Scan complete — '+data.alert_level,
+    col==='success'?'success':col==='danger'?'error':'warning');
+}
+
+// ── PDF ───────────────────────────────────────────────
+async function downloadPDF(){
+  if(!window._lastEngine){ showToast('Run a scan first','error'); return; }
+  const btn=document.getElementById('pdf-btn');
+  btn.innerHTML='<span class="spinner"></span> Generating…'; btn.disabled=true;
+  try{
+    const res=await fetch('/api/generate-pdf',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({engine_data:window._lastEngine,service_data:{}})});
+    const blob=await res.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download='VehicleAI_Report.pdf'; a.click();
+    URL.revokeObjectURL(url);
+    showToast('PDF downloaded','success');
+  }catch(e){ showToast('PDF error: '+e.message,'error'); }
+  btn.innerHTML='📄 PDF Report'; btn.disabled=false;
+}
+</script>
+{% endblock %}

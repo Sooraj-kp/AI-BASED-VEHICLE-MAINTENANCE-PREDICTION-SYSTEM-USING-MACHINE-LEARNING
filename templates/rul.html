@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% block title %}RUL Prediction — VehicleAI{% endblock %}
+{% block content %}
+
+<div class="page-hero">
+  <div class="overline">Module 03 — RUL Prediction</div>
+  <h1>Remaining <span>Useful Life</span> Predictor</h1>
+  <p>Estimate how many kilometres and days remain before your engine needs major service — using a Random Forest Regressor trained on degradation patterns across 19,535 engine records, with 80% confidence intervals.</p>
+</div>
+
+<div class="section">
+  <div style="display:grid; grid-template-columns:1fr 1.3fr; gap:24px; align-items:start;">
+
+    <!-- FORM -->
+    <div>
+      <div class="card">
+        <div class="card-head">Engine Parameters</div>
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+          <div class="field"><label>Engine RPM</label>
+            <input type="number" id="r-rpm"    value="1500" step="1"><span class="hint">300–5000</span></div>
+          <div class="field"><label>Lub Oil Pressure (bar)</label>
+            <input type="number" id="r-oil-p"  value="3.5"  step="0.01"></div>
+          <div class="field"><label>Fuel Pressure (bar)</label>
+            <input type="number" id="r-fuel-p" value="14.5" step="0.01"></div>
+          <div class="field"><label>Coolant Pressure (bar)</label>
+            <input type="number" id="r-cool-p" value="2.5"  step="0.01"></div>
+          <div class="field"><label>Lub Oil Temp (°C)</label>
+            <input type="number" id="r-oil-t"  value="80"   step="0.1"></div>
+          <div class="field"><label>Coolant Temp (°C)</label>
+            <input type="number" id="r-cool-t" value="82"   step="0.1"></div>
+        </div>
+        <div style="margin-top:18px; display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-primary btn-glow" id="rul-btn" onclick="runRUL()">⏱ Predict Remaining Life</button>
+        </div>
+      </div>
+
+      <!-- Profile load for RUL -->
+      <div id="rul-profile-banner" class="profile-banner" style="display:none; margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:18px;">🚗</span>
+          <div>
+            <div style="font-size:12px;font-weight:600;color:var(--accent);font-family:'Rajdhani',sans-serif;letter-spacing:1px;">SAVED VEHICLE PROFILE</div>
+            <div id="rul-profile-summary" style="font-size:13px;color:var(--text2);">—</div>
+          </div>
+        </div>
+        <button onclick="document.getElementById('rul-profile-banner').style.display='none'" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;">×</button>
+      </div>
+
+      <div class="card mt-16">
+        <div class="card-head">How RUL Is Calculated</div>
+        <p class="text-muted text-sm" style="line-height:1.75; margin-bottom:12px;">The model measures how far each of the 6 sensor readings deviate from their healthy operating ranges. This <strong style="color:var(--text)">health degradation score</strong> is fed into a <strong style="color:var(--text)">Random Forest Regressor</strong> (200 trees) that outputs km and day estimates with 80% confidence intervals derived from individual tree predictions.</p>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <span class="badge badge-accent">Random Forest · 200 Trees</span>
+          <span class="badge badge-success">80% Confidence Intervals</span>
+          <span class="badge badge-purple">km + Days</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- RESULTS -->
+    <div>
+      <div id="rul-waiting" class="state-box">
+        <div class="state-icon">⏱</div>
+        <div class="state-title">AWAITING ANALYSIS</div>
+        <div class="state-sub">Enter engine parameters to predict remaining useful life</div>
+      </div>
+      <div id="rul-loading" style="display:none;" class="state-box">
+        <div class="spinner" style="width:36px;height:36px;margin:0 auto 14px;"></div>
+        <div class="state-title">COMPUTING…</div>
+        <div class="state-sub">Running 200 tree predictions</div>
+      </div>
+
+      <div id="rul-result" style="display:none;">
+        <!-- Status banner -->
+        <div id="rul-panel" class="result-panel success" style="margin-bottom:14px;">
+          <div class="result-header">
+            <span id="rul-status-txt">—</span>
+            <span id="rul-status-badge" class="badge badge-success">—</span>
+          </div>
+          <div class="result-body">
+            <p id="rul-advice" class="text-muted text-sm" style="margin-bottom:16px;"></p>
+
+            <!-- Life bar -->
+            <div style="margin-bottom:18px;">
+              <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text2); margin-bottom:5px;">
+                <span class="mono" style="letter-spacing:1px;">ESTIMATED REMAINING LIFE</span>
+                <span id="rul-pct-lbl" class="font-display fw-700"></span>
+              </div>
+              <div style="background:var(--bg3); border-radius:100px; height:12px; overflow:hidden;">
+                <div id="rul-bar" style="height:100%; width:0%; border-radius:100px; background:linear-gradient(90deg,var(--danger) 0%,var(--warning) 40%,var(--success) 80%); transition:width 1.2s cubic-bezier(.4,0,.2,1);"></div>
+              </div>
+            </div>
+
+            <!-- KPI pair -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;">
+              <div style="background:var(--bg3); border:1px solid var(--border); border-radius:8px; padding:14px; text-align:center;">
+                <div class="text-xs text-muted" style="letter-spacing:1px; margin-bottom:4px;">RUL — KILOMETRES</div>
+                <div class="font-display fw-700" style="font-size:28px; color:var(--accent);" id="rul-km">—</div>
+                <div class="text-xs text-muted mt-8" id="rul-km-ci">—</div>
+              </div>
+              <div style="background:var(--bg3); border:1px solid var(--border); border-radius:8px; padding:14px; text-align:center;">
+                <div class="text-xs text-muted" style="letter-spacing:1px; margin-bottom:4px;">RUL — DAYS</div>
+                <div class="font-display fw-700" style="font-size:28px; color:var(--purple);" id="rul-days">—</div>
+                <div class="text-xs text-muted mt-8" id="rul-day-ci">—</div>
+              </div>
+            </div>
+
+            <!-- CI explanation -->
+            <div style="background:var(--bg3); border:1px solid var(--border); border-radius:6px; padding:12px;">
+              <div class="text-xs text-muted" style="letter-spacing:1.5px; margin-bottom:6px; font-family:'Rajdhani',sans-serif; font-weight:700;">80% CONFIDENCE INTERVAL</div>
+              <p class="text-sm text-muted" id="rul-ci-explain">—</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Param health -->
+        <div class="card">
+          <div class="card-head">Parameter Health Breakdown</div>
+          <div id="rul-param-grid" style="display:flex; flex-direction:column; gap:8px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const RUL_SAMPLES = {
+  good: {'r-rpm':1500,'r-oil-p':3.8,'r-fuel-p':15.0,'r-cool-p':2.6,'r-oil-t':78,'r-cool-t':80},
+  worn: {'r-rpm':420, 'r-oil-p':1.4,'r-fuel-p':5.8, 'r-cool-p':0.8,'r-oil-t':118,'r-cool-t':106},
+};
+function loadRULSample(t){ Object.entries(RUL_SAMPLES[t]).forEach(([id,v])=>document.getElementById(id).value=v); }
+
+// Auto-show profile banner if profile exists
+(function initRULProfile(){
+  const p=JSON.parse(localStorage.getItem('vaiProfile')||'null');
+  if(!p) return;
+  const banner=document.getElementById('rul-profile-banner');
+  const sum=document.getElementById('rul-profile-summary');
+  sum.textContent=`${p.brand.charAt(0).toUpperCase()+p.brand.slice(1)} ${p.model.charAt(0).toUpperCase()+p.model.slice(1)} · ${p.year} · ${p.engine}${p.mileage?' · '+parseInt(p.mileage).toLocaleString('en-IN')+' km current odometer':''}`;
+  banner.style.display='flex';
+})();
+
+const HEALTHY = {
+  'Engine rpm':[700,2000],'Lub oil pressure':[2.0,6.0],'Fuel pressure':[8.0,22.0],
+  'Coolant pressure':[1.0,4.0],'lub oil temp':[60,100],'Coolant temp':[70,95]
+};
+const FEAT_LABELS = {
+  'Engine rpm':'Engine RPM','Lub oil pressure':'Lub Oil Pressure','Fuel pressure':'Fuel Pressure',
+  'Coolant pressure':'Coolant Pressure','lub oil temp':'Lub Oil Temp','Coolant temp':'Coolant Temp'
+};
+const FEAT_UNITS = {'Engine rpm':'RPM','lub oil temp':'°C','Coolant temp':'°C'};
+
+async function runRUL(){
+  const btn=document.getElementById('rul-btn');
+  const vals = {
+    'Engine rpm':       parseFloat(document.getElementById('r-rpm').value),
+    'Lub oil pressure': parseFloat(document.getElementById('r-oil-p').value),
+    'Fuel pressure':    parseFloat(document.getElementById('r-fuel-p').value),
+    'Coolant pressure': parseFloat(document.getElementById('r-cool-p').value),
+    'lub oil temp':     parseFloat(document.getElementById('r-oil-t').value),
+    'Coolant temp':     parseFloat(document.getElementById('r-cool-t').value),
+  };
+  if(Object.values(vals).some(v=>isNaN(v))){ showToast('Please fill all fields','error'); return; }
+  btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Computing…';
+  document.getElementById('rul-waiting').style.display='none';
+  document.getElementById('rul-result').style.display='none';
+  document.getElementById('rul-loading').style.display='block';
+  try{
+    const res=await fetch('/api/predict-rul',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(vals)});
+    const d=await res.json();
+    document.getElementById('rul-loading').style.display='none';
+    renderRUL(d, vals);
+  }catch(e){ document.getElementById('rul-loading').style.display='none'; showToast('Error: '+e.message,'error'); }
+  btn.disabled=false; btn.innerHTML='⏱ Predict Remaining Life';
+}
+
+function renderRUL(d, vals){
+  const COL = {CRITICAL:'danger',LOW:'warning',MODERATE:'caution',GOOD:'success'};
+  const col = COL[d.life_status]||'success';
+  const panel=document.getElementById('rul-panel');
+  panel.className='result-panel '+col;
+  const bCls=col==='success'?'badge-success':col==='warning'?'badge-warning':col==='caution'?'badge-caution':'badge-danger';
+  document.getElementById('rul-status-txt').textContent=d.life_status+' — Engine Life';
+  const badge=document.getElementById('rul-status-badge');
+  badge.className='badge '+bCls; badge.textContent=d.life_status;
+  document.getElementById('rul-advice').textContent=d.advice;
+  document.getElementById('rul-bar').style.width=d.life_pct+'%';
+  document.getElementById('rul-pct-lbl').textContent=d.life_pct.toFixed(1)+'% remaining';
+  document.getElementById('rul-km').textContent=(d.rul_km/1000).toFixed(1)+'k km';
+  document.getElementById('rul-km-ci').textContent=`80% CI: ${(d.km_ci_low/1000).toFixed(1)}k – ${(d.km_ci_high/1000).toFixed(1)}k km`;
+  document.getElementById('rul-days').textContent=Math.round(d.rul_days)+' days';
+  document.getElementById('rul-day-ci').textContent=`80% CI: ${Math.round(d.day_ci_low)} – ${Math.round(d.day_ci_high)} days`;
+  document.getElementById('rul-ci-explain').textContent=
+    `80% probability that true RUL is between ${(d.km_ci_low/1000).toFixed(1)}k km (${Math.round(d.day_ci_low)} days) and ${(d.km_ci_high/1000).toFixed(1)}k km (${Math.round(d.day_ci_high)} days). Central estimate: ${(d.rul_km/1000).toFixed(1)}k km.`;
+  // Param health
+  const grid=document.getElementById('rul-param-grid'); grid.innerHTML='';
+  Object.entries(HEALTHY).forEach(([feat,[lo,hi]])=>{
+    const val=vals[feat]; const mid=(lo+hi)/2; const half=(hi-lo)/2;
+    const dist=Math.max(0,Math.abs(val-mid)-half);
+    const hp=Math.max(0,100-Math.min(100,dist/(half+1e-9)*100));
+    const c=hp>70?'var(--success)':hp>40?'var(--warning)':'var(--danger)';
+    const unit=FEAT_UNITS[feat]||'bar';
+    grid.innerHTML+=`<div style="display:flex;align-items:center;gap:10px;">
+      <div style="min-width:140px;font-size:12px;color:var(--text2);">${FEAT_LABELS[feat]}</div>
+      <div style="flex:1;background:var(--bg3);border-radius:100px;height:7px;overflow:hidden;">
+        <div style="height:100%;width:${hp}%;background:${c};border-radius:100px;transition:width .8s;"></div>
+      </div>
+      <div class="mono" style="font-size:10px;min-width:60px;color:var(--text2);text-align:right;">${val} ${unit}</div>
+      <div class="font-display fw-700" style="font-size:12px;color:${c};min-width:36px;">${hp.toFixed(0)}%</div>
+    </div>`;
+  });
+  document.getElementById('rul-result').style.display='block';
+}
+</script>
+{% endblock %}
