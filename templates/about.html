@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %}About — VehicleAI{% endblock %}
+{% block content %}
+
+<div class="page-hero">
+  <div class="overline">Module 08 — Project Documentation</div>
+  <h1>About <span>VehicleAI</span></h1>
+  <p>An end-to-end machine learning system for vehicle predictive maintenance — covering engine fault detection, service cost prediction, anomaly detection, RUL estimation, what-if simulation, SHAP explainability, and model analytics.</p>
+  <div class="hero-badges">
+    <span class="badge badge-accent">Python · Flask</span>
+    <span class="badge badge-success">Scikit-learn</span>
+    <span class="badge badge-purple">SHAP Values</span>
+    <span class="badge badge-warning">20,674 Records</span>
+  </div>
+</div>
+
+<div class="section">
+  <div class="two-col-grid" style="display:grid;grid-template-columns:2fr 1fr;gap:28px;align-items:start;">
+
+    <div>
+      <!-- Objective -->
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-head">Project Objective</div>
+        <p class="text-muted" style="line-height:1.85;font-size:14px;">
+          Traditional vehicle maintenance relies on fixed-interval servicing — too early wastes money, too late risks failure.
+          VehicleAI uses real historical engine sensor data and service records to provide
+          <strong style="color:var(--text)">early maintenance alerts</strong>,
+          <strong style="color:var(--text)">prevent sudden failures</strong>,
+          <strong style="color:var(--text)">minimise repair costs</strong>, and
+          <strong style="color:var(--text)">explain AI decisions transparently</strong> through
+          Shapley values — making every prediction interpretable and trustworthy.
+        </p>
+      </div>
+
+      <!-- Architecture -->
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-head">System Architecture & Pipeline</div>
+        <div class="flow-steps">
+          {% for num, title, desc in [
+            ('01','Data Collection','Two datasets: engine sensor data (19,535 records, 7 features) and Indian vehicle service records (1,139 records, 24 columns) covering brands, models, mileage, and 14 maintenance items across multiple regions.'),
+            ('02','Preprocessing','Label encoding for categorical variables (brand, model, engine type, region). StandardScaler normalisation for continuous engine parameters. Stratified 80/20 train-test split with fixed random seeds for reproducibility.'),
+            ('03','Model Training','5 ML models: Gradient Boosting engine classifier · Random Forest cost regressor · 14 individual RF item classifiers · Isolation Forest anomaly detector (normal-only training) · Random Forest RUL regressors (km and days).'),
+            ('04','Evaluation & Analysis','16+ training visualisations: ROC-AUC curves, confusion matrices, precision-recall, feature importance, learning curves, residual analysis, cross-validation distributions, calibration curves.'),
+            ('05','SHAP Explainability','Shapley value approximation using interventional sampling across 150 background engine records. Global analysis on 300 training samples: beeswarm plot, dependence plots, direction heatmap, global importance ranking.'),
+            ('06','Flask Deployment','REST API endpoints for real-time inference on all 5 models. Jinja2 templated UI with interactive forms, confidence meters, waterfall charts, health gauges, animated result panels, and vehicle profile persistence.'),
+          ] %}
+          <div class="flow-step">
+            <div class="step-num">{{ num }}</div>
+            <div class="step-body"><h4>{{ title }}</h4><p>{{ desc }}</p></div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Datasets -->
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-head">Datasets</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div style="background:var(--bg3);border-radius:8px;padding:16px;border:1px solid rgba(88,166,255,.2);">
+            <div class="font-display fw-700" style="color:var(--accent);font-size:14px;margin-bottom:10px;">engine_data.csv</div>
+            <div class="text-sm text-muted" style="line-height:1.9;font-size:12px;">
+              <strong style="color:var(--text)">19,535</strong> records · 7 features<br>
+              Target: Engine Condition (0 = Normal, 1 = Fault)<br>
+              Features: RPM · Lub Oil Pressure · Fuel Pressure<br>
+              Coolant Pressure · Oil Temp · Coolant Temp<br>
+              Fault rate: <strong style="color:var(--danger)">~63.1%</strong>
+            </div>
+          </div>
+          <div style="background:var(--bg3);border-radius:8px;padding:16px;border:1px solid rgba(63,185,80,.2);">
+            <div class="font-display fw-700" style="color:var(--success);font-size:14px;margin-bottom:10px;">service_records.csv</div>
+            <div class="text-sm text-muted" style="line-height:1.9;font-size:12px;">
+              <strong style="color:var(--text)">1,139</strong> records · 24 columns<br>
+              Targets: Cost (regression) + 14 binary item labels<br>
+              Features: Brand · Model · Engine Type · Region<br>
+              Make Year · Mileage · Service Interval<br>
+              Cost range: <strong style="color:var(--warning)">₹1,099 – ₹14,000</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modules list -->
+      <div class="card">
+        <div class="card-head">All 8 Modules</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;">
+          {% for icon, num, title, desc, href in [
+            ('⚡','01','Engine Condition Scanner','GBM classifier · 6 params · confidence meter','/engine'),
+            ('🔧','02','Service Cost Predictor','RF regression · 14 items · 90% CI · SHAP cost','/service'),
+            ('⏱','03','RUL Predictor','Degradation model · km + days · 80% CI','/rul'),
+            ('🔬','04','Anomaly Detector','Isolation Forest · normal-only training · 5% contamination','/anomaly'),
+            ('🎛','05','What-If Simulator','Live slider inference · all 5 models · real-time','/whatif'),
+            ('🔍','06','SHAP Explainability','Shapley values · waterfall chart · global analysis','/shap'),
+            ('📊','07','Analytics Dashboard','25+ graphs · all models · performance KPIs','/analytics'),
+            ('📋','08','About','Architecture · datasets · tech stack · outcomes','/about'),
+          ] %}
+          <a href="{{ href }}" style="text-decoration:none;">
+            <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;display:flex;gap:10px;align-items:flex-start;transition:border-color .2s,transform .15s;"
+                 onmouseover="this.style.borderColor='var(--accent)';this.style.transform='translateY(-1px)';"
+                 onmouseout="this.style.borderColor='var(--border)';this.style.transform='';">
+              <span style="font-size:18px;flex-shrink:0;">{{ icon }}</span>
+              <div>
+                <div style="font-size:9px;color:var(--text3);font-family:'Space Mono',monospace;margin-bottom:2px;">MODULE {{ num }}</div>
+                <div class="font-display fw-700" style="font-size:13px;color:var(--text);">{{ title }}</div>
+                <div style="font-size:11px;color:var(--text3);margin-top:3px;line-height:1.4;">{{ desc }}</div>
+              </div>
+            </div>
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div>
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-head">Tech Stack</div>
+        <div class="tech-chips">
+          {% for t in ['Python 3.11','Flask 3.x','Scikit-learn','Pandas','NumPy','Matplotlib','Seaborn','Joblib','Random Forest','Gradient Boosting','Isolation Forest','StandardScaler','LabelEncoder','SHAP (custom)','HTML5','CSS3','Vanilla JS','Jinja2','ReportLab (PDF)','DejaVu Fonts'] %}
+          <span class="chip">{{ t }}</span>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-head">Model Performance</div>
+        <div style="display:flex;flex-direction:column;gap:7px;">
+          {% for name, algo, score, col in [
+            ('Engine Classifier',    'Gradient Boosting', '66.3% Acc',  'accent'),
+            ('Cost Predictor',       'Random Forest',     'R² = 0.868', 'success'),
+            ('Item Classifiers ×14', 'Random Forest',     '~97.3% Acc', 'success'),
+            ('Anomaly Detector',     'Isolation Forest',  '5% Contam.', 'warning'),
+            ('RUL Predictor (km)',   'Random Forest',     'R² ≈ 0.91',  'accent'),
+            ('RUL Predictor (days)', 'Random Forest',     'R² ≈ 0.89',  'accent'),
+          ] %}
+          <div style="background:var(--bg3);border-radius:6px;padding:10px;border:1px solid var(--border);">
+            <div class="font-display fw-700" style="font-size:12px;color:var(--text);">{{ name }}</div>
+            <div style="display:flex;justify-content:space-between;margin-top:3px;">
+              <span class="text-xs text-muted mono">{{ algo }}</span>
+              <span style="font-size:11px;font-weight:700;color:var(--{{ col }});">{{ score }}</span>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-head">Expected Outcomes</div>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:8px;">
+          {% for icon, text in [
+            ('🔔','Early maintenance alerts before failure'),
+            ('⛔','Reduce sudden unexpected breakdowns'),
+            ('💰','Minimise unnecessary repair costs'),
+            ('📈','Improve overall vehicle reliability'),
+            ('🔍','Transparent, explainable AI decisions'),
+            ('🛡️','Safer, more reliable transportation'),
+          ] %}
+          <li style="display:flex;gap:10px;font-size:12px;color:var(--text2);align-items:center;">
+            <span style="font-size:15px;flex-shrink:0;">{{ icon }}</span> {{ text }}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-head">Project Files</div>
+        <div style="display:flex;flex-direction:column;gap:4px;font-family:'Space Mono',monospace;font-size:10px;color:var(--text2);">
+          {% for f in ['app.py','train_models.py','train_shap.py','shap_explainer.py','pdf_generator.py','requirements.txt','templates/ (10 pages)','static/css/style.css (~1000 lines)','static/js/main.js','static/fonts/ (DejaVu TTF)','data/engine_data.csv','data/service_records.csv','models/*.pkl (18+ models)','models/shap_background.pkl','static/images/graphs/ (25+ PNGs)'] %}
+          <div style="padding:3px 7px;background:var(--bg3);border-radius:4px;">{{ f }}</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
